@@ -1,8 +1,18 @@
 #pragma once
 #include "unicorn.h"
 #include "CPU.h"
+
 struct UnicornData
 {
+	uc_hook Inthook;
+	uc_hook PerLinehook;
+	uc_hook PerBlockhook;
+	uc_hook MemRead;
+	uc_hook MemWrite;
+	uc_hook InvalidIns;
+	uc_hook SpecialIns;
+	uc_hook ModeProtection;
+
 	uc_engine* uc;
 	CPU* cpu;
 	AllCPU* cpus;

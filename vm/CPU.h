@@ -4,7 +4,12 @@
 #include "xed_table.h"
 #include <intrin.h>
 #include "unicorn.h"
-extern bool isIn32Mode;
+//////////////////////////////////////////////////////////////////////////////
+extern char* RAM;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
 union ModRM {
 	uint8_t byte;
 	struct {
@@ -89,6 +94,7 @@ struct CPU {
 		Reg[19] = &CR4;
 		Reg[20] = &Eflag;
 	}
+	static bool inProtectedMode;
 	virtual void SetRegOrder(const int* _RegOrder)=0;
 	virtual const int* GetRegOrder() = 0;
 	virtual const int  GetNumberofRegister() = 0;
@@ -106,7 +112,7 @@ struct CPU32:public CPU {
 		return 21;
 	}
 	uint64_t GetFlatMemoryIP() {
-		return  RIP ;
+		return  (uint64_t)(RIP) ;
 	}
 };
 struct CPU16:public CPU {
@@ -137,10 +143,4 @@ struct AllCPU {
 		delete cpu32;
 	}
 };
-
-//////////////////////////////////////////////////////////////////////////////
-extern char* RAM;
-
-
-
-//////////////////////////////////////////////////////////////////////////////
+#define RAM_SIZE 2147483648

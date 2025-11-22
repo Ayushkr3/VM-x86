@@ -153,6 +153,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="cpu.cpp" />
     <ClCompile Include="Global.cpp" />
     <ClCompile Include="io.cpp" />
     <ClCompile Include="PIC.cpp" />

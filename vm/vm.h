@@ -12,7 +12,6 @@ extern "C" {
 }
 #include "unic.h"
 #include "Global.h"
-#define RAM_SIZE 2147483648
 
 void EmulationLoop(UnicornData* ud);
 UnicornData* SetupArch();

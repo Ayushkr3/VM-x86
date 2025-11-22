@@ -23,6 +23,7 @@ void LookUpUnicorn(uc_engine* uc, uint32_t address, void* user_data);
 void LookUpSpecialIns(uc_engine* uc, uint32_t address, void* user_data);
 void PerBlockHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data);
 void PerLineHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data);
+void ProtectedModeSwitchHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data);
 void InvalidInsHook(uc_engine* uc, void* user_data);
 void MemR(uc_engine* uc, uc_mem_type type,
 	uint64_t address, int size, int64_t value, void* user_data);

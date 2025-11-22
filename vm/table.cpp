@@ -565,20 +565,71 @@ bool deltaMode = false; //32 bit requested
 //	}
 //}
 
-
-
-void LookUpSpecialIns(uc_engine* uc, uint32_t address, void* user_data) {
-	std::cout << "Special INS";
+void ProtectedModeSwitchHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data) {
+	UnicornData* ud = (UnicornData*)user_data;
+	uint8_t* bytes = (uint8_t*)(RAM + address);
+	if (*bytes == 0xCB || *bytes == 0xCA) {
+		if (!ud->cpu->inProtectedMode)
+			goto SixteenTo32;
+		else
+			goto ThirtyTwoTo16;
+		
+	}
+SixteenTo32: {
+	ud->cpu->inProtectedMode = true;
+	uc_hook_del(ud->uc, ud->ModeProtection);
+	uc_ctl_flush_tb(uc);
+	uc_err e = uc_emu_stop(ud->uc);
+	ReadRegUni(ud);
+	uc_emu_start(ud->uc, ud->cpu->CS * 0x10 + ud->cpu->RIP, 0, 0, 1);
+	ReadRegUni(ud);
+	auto index = (ud->cpu->CS >> 3) * 8;
+	uint64_t* desc_ptr = (uint64_t*)(RAM + ud->cpu->GDT.base + index);
+	uint64_t desc = *desc_ptr;
+	uint32_t base = ((desc >> 16) & 0xFFFFFF) | ((desc >> 56) & 0xFF) << 24;
+	uc_context* ctx;
+	WriteRegUni(ud, UC_X86_REG_EIP, /*base +*/ ud->cpu->RIP);
+	e = uc_context_alloc(ud->uc, &ctx);
+	e = uc_context_save(ud->uc, ctx);
+	ud->uc = ud->cpus->uc32;
+	ud->cpu = ud->cpus->cpu32;
+	e = uc_context_restore(ud->uc, ctx);
+	ReadRegUni(ud);
+	uc_ctl_flush_tb(uc);
+	uc_ctl_flush_tlb(uc);
+	}
+ThirtyTwoTo16: {
+//Fix pendinge issue
+	ud->cpu->inProtectedMode = false;
+	uc_hook_del(ud->uc, ud->ModeProtection);
+	uc_ctl_flush_tb(uc);
+	uc_err e = uc_emu_stop(ud->uc);
+	ReadRegUni(ud);
+	uc_emu_start(ud->uc,ud->cpu->RIP, 0, 0, 1);
+	ReadRegUni(ud);
+	uc_context* ctx;
+	WriteRegUni(ud, UC_X86_REG_EIP, /*base +*/ ud->cpu->RIP);
+	e = uc_context_alloc(ud->uc, &ctx);
+	e = uc_context_save(ud->uc, ctx);
+	ud->uc = ud->cpus->uc16;
+	ud->cpu = ud->cpus->cpu16;
+	e = uc_context_restore(ud->uc, ctx);
+	ReadRegUni(ud);
+	uc_ctl_flush_tlb(uc);
 }
+}
+
 void PerBlockHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data) {
-	if (IRQ.stop_req.load()) {
+	UnicornData* ud = (UnicornData*)user_data;
+	ReadRegUni(ud);
+	if (IRQ.stop_req.load()&&((ud->cpu->Eflag >> 9) & 1)) {
 		IRQ.stop_req.store(false);
 		uc_emu_stop(uc);
 	}
-	UnicornData* ud = (UnicornData*)user_data;
-	ReadRegUni(ud);
 	if ((ud->cpu->CR0&((1<<0)))!=deltaMode) {
 		deltaMode = !deltaMode;
+
+		uc_hook_add(ud->uc, &ud->ModeProtection, UC_HOOK_CODE, ProtectedModeSwitchHook, ud, 0, RAM_SIZE);
 	}
 }
 void PerLineHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data) {
@@ -607,7 +658,9 @@ void InvalidInsHook(uc_engine* uc, void* user_data) {
 	char* at = (RAM + (ud->cpu->CS * 16) + ud->cpu->RIP);
 	MemDump(at, 15);
 }
-
+void LookUpSpecialIns(uc_engine* uc, uint32_t address, void* user_data) {
+	std::cout << "Special INS";
+}
 
 
 

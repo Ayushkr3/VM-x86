@@ -6,28 +6,28 @@ bool isIn32Mode = true;
 char* RAM = nullptr;
 xed_state_t state;
 uc_err err;
-uc_hook Inthook;
-uc_hook PerLinehook;
-uc_hook PerBlockhook;
-uc_hook MemRead;
-uc_hook MemWrite;
-uc_hook InvalidIns;
-uc_hook SpecialIns;
 UnicornData* SetupArch() {
     UnicornData* ud = new UnicornData;
     err = uc_open(UC_ARCH_X86, UC_MODE_16, &cpus.uc16);
     err = uc_open(UC_ARCH_X86, UC_MODE_32, &cpus.uc32);
     err = uc_mem_map_ptr(cpus.uc16, 0, RAM_SIZE, UC_PROT_ALL, RAM);
     err = uc_mem_map_ptr(cpus.uc32, 0, RAM_SIZE, UC_PROT_ALL, RAM);
-    err = uc_hook_add(cpus.uc16, &PerBlockhook, UC_HOOK_BLOCK, PerBlockHook, (void*)ud, 0, RAM_SIZE);
+    err = uc_hook_add(cpus.uc16, &ud->PerBlockhook, UC_HOOK_BLOCK, PerBlockHook, (void*)ud, 0, RAM_SIZE);
+    err = uc_hook_add(cpus.uc32, &ud->PerBlockhook, UC_HOOK_BLOCK, PerBlockHook, (void*)ud, 0, RAM_SIZE);
 #ifdef DEBUG
-    err = uc_hook_add(cpus.uc16, &PerLinehook, UC_HOOK_BLOCK, PerLineHook, (void*)ud, 0, RAM_SIZE);
-    err = uc_hook_add(cpus.uc16, &SpecialIns, UC_HOOK_INSN, LookUpSpecialIns, (void*)ud, 0, RAM_SIZE);
+    err = uc_hook_add(cpus.uc16, &ud->PerLinehook, UC_HOOK_BLOCK, PerLineHook, (void*)ud, 0, RAM_SIZE);
+    err = uc_hook_add(cpus.uc16, &ud->SpecialIns, UC_HOOK_INSN, LookUpSpecialIns, (void*)ud, 0, RAM_SIZE);
     //err = uc_hook_add(uc, &MemRead, UC_HOOK_MEM_READ_AFTER, MemR, ud, 0, RAM_SIZE);
     //err = uc_hook_add(uc, &MemWrite, UC_HOOK_MEM_WRITE, MemW, ud, 0, RAM_SIZE);
-    err = uc_hook_add(cpus.uc16, &InvalidIns, UC_HOOK_INSN_INVALID, InvalidInsHook, ud, 0, 0);
+    err = uc_hook_add(cpus.uc16, &ud->InvalidIns, UC_HOOK_INSN_INVALID, InvalidInsHook, (void*)ud, 0, 0);
+    err = uc_hook_add(cpus.uc32, &ud->PerLinehook, UC_HOOK_BLOCK, PerLineHook, (void*)ud, 0, RAM_SIZE);
+    err = uc_hook_add(cpus.uc32, &ud->SpecialIns, UC_HOOK_INSN, LookUpSpecialIns, (void*)ud, 0, RAM_SIZE);
+    //err = uc_hook_add(uc, &MemRead, UC_HOOK_MEM_READ_AFTER, MemR, ud, 0, RAM_SIZE);
+    //err = uc_hook_add(uc, &MemWrite, UC_HOOK_MEM_WRITE, MemW, ud, 0, RAM_SIZE);
+    err = uc_hook_add(cpus.uc32, &ud->InvalidIns, UC_HOOK_INSN_INVALID, InvalidInsHook, (void*)ud, 0, 0);
 #endif
-    err = uc_hook_add(cpus.uc16, &Inthook, UC_HOOK_INTR, LookUpUnicorn, (void*)ud, 0, 0);
+    err = uc_hook_add(cpus.uc16, &ud->Inthook, UC_HOOK_INTR, LookUpUnicorn, (void*)ud, 0, 0);
+    err = uc_hook_add(cpus.uc32, &ud->Inthook, UC_HOOK_INTR, LookUpUnicorn, (void*)ud, 0, 0);
     ud->cpu = cpus.cpu16;
     ud->uc = cpus.uc16;
     ud->cpus = &cpus;
@@ -38,7 +38,7 @@ void EmulationLoop(UnicornData* ud) {
     err = uc_reg_write(cpus.uc16, UC_X86_REG_IP, &cpus.cpu16->RIP);
     while (running) {
         ReadRegUni(ud);
-        uint64_t ip = cpus.cpu16->GetFlatMemoryIP();
+        uint64_t ip = ud->cpu->GetFlatMemoryIP();
         err = uc_emu_start(ud->uc, ip, 0, 0, 0);
         EnterCriticalSection(&IRQ.cs);
 
@@ -52,6 +52,7 @@ int main()
     RAM = (char*)malloc(2147483648); //2 GB ram
     UnicornData* ud = SetupArch();
     cpus.cpu16->SetRegOrder(RegOrder16);
+    cpus.cpu32->SetRegOrder(RegOrder32);
     LoadDisk("D:/windows nt/windows xp32.iso", DISK_TYPE::DVD);
     LoadDisk("D:/windows nt/disk0.disk", DISK_TYPE::HDD0);
     ZeroMemory(RAM, RAM_SIZE);
