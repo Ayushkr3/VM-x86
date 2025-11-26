@@ -54,5 +54,6 @@ void ReadHDD(uint16_t cyl, uint8_t head, uint16_t numberofSec,uint8_t sector,int
 void RemoveDisk(int index);
 void ReadIODisk(int index, long long DAP, UnicornData* ud);
 void IOLookUp(InteruptStruct in, UnicornData* ud);
+void HardwareIntHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data);
 void HardwareInt(int nums,UnicornData* ud);
 void InitIO(uc_engine** uc);

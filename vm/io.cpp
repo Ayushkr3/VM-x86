@@ -8,20 +8,72 @@ uc_context* ctx;
 static inline uint8_t to_bcd(int value) {
     return (uint8_t)(((value / 10) << 4) | (value % 10));
 }
-////////////////////////////////////////////////////////////////////////////////////
 
+const int INTOrder[3] = {
+    UC_X86_REG_EFLAGS,
+    UC_X86_REG_CS,
+    UC_X86_REG_EIP,
+};
+////////////////////////////////////////////////////////////////////////////////////
+void HardwareIntHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data) {
+    UnicornData* ud = (UnicornData*)user_data;
+    uint8_t* bytes = (uint8_t*)(RAM + address);
+#ifdef DEBUG
+    ReadRegUni(ud);
+#endif
+    if (*bytes == 0xCF) {
+        uc_hook_del(ud->uc, ud->HIntHook);
+        uc_emu_stop(ud->uc);
+    }
+
+}
 void HardwareInt(int nums, UnicornData* ud) {
     switch (nums)
     {
-    case 0x0: {
-        char segIP[4];
-        memcpy(segIP,RAM+0x70,4);
-        if (!(uint32_t*)segIP ==0x0) {
-            int64_t IP = ud->cpu->RIP;
-            int64_t CS = ud->cpu->RIP;
-            uint16_t* newIP = (uint16_t*)RAM + 0x70;
-            uint16_t* newCS = (uint16_t*)RAM + 0x70+0x2;
-            //uc_emu_start(ud->uc, *newCS * 16 + *newIP, 0, 0, 0);
+        //Clock INT 0x8
+    case IRQ0: {
+        char* segIP=RAM+0x70;
+        if (!(uint32_t)*segIP ==0x0) {
+            /*
+            * cli
+            * push ip
+            * push cs
+            * push eflag
+            * call (INT 1ah)
+            * pop eflag
+            * pop cs
+            * pop ip
+            * sti
+            */
+            ReadRegUni(ud);
+            int16_t IPCSEF[3] = { ud->cpu->RIP,ud->cpu->CS,ud->cpu->Eflag};
+            //Add 12 bytes to stack 
+            //INT 0x8 6 byte
+            //Nested INT 0x1a 6 byte
+            WriteRegUni(ud, UC_X86_REG_ESP, ud->cpu->RSP-12);
+            uint32_t stackpos = ((ud->cpu->SS * 16) + (uint16_t)(ud->cpu->RSP));
+            //Write twice or some garbage
+            uc_mem_write(ud->uc, stackpos-12, IPCSEF, 3*sizeof(int16_t));
+            uc_mem_write(ud->uc, stackpos-6, IPCSEF, 3 * sizeof(int16_t));
+            ReadRegUni(ud);
+            uint16_t* newIP = (uint16_t*)(RAM + 0x70);
+            uint16_t* newCS = (uint16_t*)(RAM + 0x70+0x2); 
+            uc_hook_add(ud->uc,&ud->HIntHook , UC_HOOK_CODE, HardwareIntHook, ud, 0, RAM_SIZE);
+            //ISR routine
+            uc_emu_start(ud->uc, *newCS * 16 + *newIP, 0, 0, 0);
+            //Perform the final IRET Nested instruction
+            //uc_emu_start(ud->uc, ud->cpu->CS * 16 + ud->cpu->RIP, 0, 0, 1);
+            //uc_err e = uc_emu_start(ud->uc, 0x20c87, 0, 0, 1);
+            uc_mem_read(ud->uc, stackpos-12, IPCSEF, 3 * sizeof(int16_t));
+            WriteRegUni(ud, UC_X86_REG_ESP, ud->cpu->RSP + 6);
+            ReadRegUni(ud);
+            //Read the INT 0x8 IP,CS....
+            uc_mem_read(ud->uc, stackpos-6, IPCSEF, 3 * sizeof(int16_t));
+            WriteRegUni(ud, UC_X86_REG_ESP, ud->cpu->RSP +6);
+            WriteRegUni(ud, UC_X86_REG_IP, IPCSEF[0]);
+            WriteRegUni(ud, UC_X86_REG_CS, IPCSEF[1]);
+            WriteRegUni(ud, UC_X86_REG_EFLAGS, IPCSEF[2]);
+            ReadRegUni(ud);
         }
         break;
     }
@@ -347,6 +399,7 @@ void IOLookUp(InteruptStruct in, UnicornData* ud) {
         break;
     }
     default:
+        if (in.num == 0x10)break;
         std::cout << "unhandled interupt " << in.num << std::endl;
         break;
     }

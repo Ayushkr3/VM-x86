@@ -60,13 +60,15 @@ struct CPU {
 	bool SF = false;
 	bool TF = false;
 	bool IF = false;
-	struct gdtr{
+	struct mmrs{
 		uint32_t selector = 0;
 		uint64_t base=0;
 		uint32_t limit=0;
 		uint32_t flags=0;
 	};
-	gdtr GDT;
+	mmrs GDT;
+	mmrs LDT;
+	mmrs IDT;
 	INT64 Eflag=0;
 	INT64* Reg[21];
 	CPU() {

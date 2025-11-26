@@ -568,12 +568,15 @@ bool deltaMode = false; //32 bit requested
 void ProtectedModeSwitchHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data) {
 	UnicornData* ud = (UnicornData*)user_data;
 	uint8_t* bytes = (uint8_t*)(RAM + address);
-	if (*bytes == 0xCB || *bytes == 0xCA) {
+	if (*bytes == 0xCB || *bytes == 0xCA|| *bytes == 0xEA|| *bytes == 0x9a|| *bytes == 0xCF) {
 		if (!ud->cpu->inProtectedMode)
 			goto SixteenTo32;
 		else
 			goto ThirtyTwoTo16;
 		
+	}
+	else {
+		return;
 	}
 SixteenTo32: {
 	ud->cpu->inProtectedMode = true;
@@ -595,11 +598,12 @@ SixteenTo32: {
 	ud->cpu = ud->cpus->cpu32;
 	e = uc_context_restore(ud->uc, ctx);
 	ReadRegUni(ud);
+	uc_context_free(ctx);
 	uc_ctl_flush_tb(uc);
 	uc_ctl_flush_tlb(uc);
+	return;
 	}
 ThirtyTwoTo16: {
-//Fix pendinge issue
 	ud->cpu->inProtectedMode = false;
 	uc_hook_del(ud->uc, ud->ModeProtection);
 	uc_ctl_flush_tb(uc);
@@ -608,14 +612,28 @@ ThirtyTwoTo16: {
 	uc_emu_start(ud->uc,ud->cpu->RIP, 0, 0, 1);
 	ReadRegUni(ud);
 	uc_context* ctx;
-	WriteRegUni(ud, UC_X86_REG_EIP, /*base +*/ ud->cpu->RIP);
+	WriteRegUni(ud, UC_X86_REG_EIP, ud->cpu->RIP);
 	e = uc_context_alloc(ud->uc, &ctx);
 	e = uc_context_save(ud->uc, ctx);
+	const int numofR = ud->cpu->GetNumberofRegister();
+	CPU::mmrs gdtr;
+	CPU::mmrs ldtr;
+	CPU::mmrs idtr;
+	gdtr = ud->cpu->GDT;
+	ldtr = ud->cpu->LDT;
+	idtr = ud->cpu->IDT;
 	ud->uc = ud->cpus->uc16;
 	ud->cpu = ud->cpus->cpu16;
 	e = uc_context_restore(ud->uc, ctx);
+	uc_context_free(ctx);
+	uc_reg_write(ud->uc, UC_X86_REG_GDTR, &gdtr);
+	uc_reg_write(ud->uc, UC_X86_REG_LDTR, &ldtr);
+	uc_reg_write(ud->uc, UC_X86_REG_IDTR, &idtr);
 	ReadRegUni(ud);
+	WriteRegUni(ud, UC_X86_REG_CR0, 0x10);
+	uc_ctl_flush_tb(uc);
 	uc_ctl_flush_tlb(uc);
+	return;
 }
 }
 
@@ -626,20 +644,18 @@ void PerBlockHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_dat
 		IRQ.stop_req.store(false);
 		uc_emu_stop(uc);
 	}
-	if ((ud->cpu->CR0&((1<<0)))!=deltaMode) {
-		deltaMode = !deltaMode;
-
+	bool currPE = (ud->cpu->CR0 >> 0) & 1;
+	if (currPE != deltaMode) {
+		deltaMode = currPE;
 		uc_hook_add(ud->uc, &ud->ModeProtection, UC_HOOK_CODE, ProtectedModeSwitchHook, ud, 0, RAM_SIZE);
 	}
 }
 void PerLineHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data) {
 	UnicornData* ud = (UnicornData*)user_data;
 	ReadRegUni(ud);
-	std::cout << std::hex << ud->cpu->RIP << std::endl;
-	if (address == 0x0002026d) {
-		auto index = (0x8>>3)*8;
-		uint64_t* test = (uint64_t*)(RAM + ud->cpu->GDT.base + index);
-		MemDump(RAM + ud->cpu->GDT.base+index, 256);
+	//std::cout << std::hex << ud->cpu->RIP << std::endl;
+	if (address == 0x00020742) {
+		MemDump(RAM + 0x00020c53, 256);
 		
 	}
 }

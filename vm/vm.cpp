@@ -1,7 +1,7 @@
 #include "vm.h"
 
 AllCPU cpus;
-bool isIn32Mode = true;
+bool isIn32Mode = false;
 
 char* RAM = nullptr;
 xed_state_t state;
@@ -16,14 +16,14 @@ UnicornData* SetupArch() {
     err = uc_hook_add(cpus.uc32, &ud->PerBlockhook, UC_HOOK_BLOCK, PerBlockHook, (void*)ud, 0, RAM_SIZE);
 #ifdef DEBUG
     err = uc_hook_add(cpus.uc16, &ud->PerLinehook, UC_HOOK_BLOCK, PerLineHook, (void*)ud, 0, RAM_SIZE);
-    err = uc_hook_add(cpus.uc16, &ud->SpecialIns, UC_HOOK_INSN, LookUpSpecialIns, (void*)ud, 0, RAM_SIZE);
-    //err = uc_hook_add(uc, &MemRead, UC_HOOK_MEM_READ_AFTER, MemR, ud, 0, RAM_SIZE);
-    //err = uc_hook_add(uc, &MemWrite, UC_HOOK_MEM_WRITE, MemW, ud, 0, RAM_SIZE);
-    err = uc_hook_add(cpus.uc16, &ud->InvalidIns, UC_HOOK_INSN_INVALID, InvalidInsHook, (void*)ud, 0, 0);
     err = uc_hook_add(cpus.uc32, &ud->PerLinehook, UC_HOOK_BLOCK, PerLineHook, (void*)ud, 0, RAM_SIZE);
+    err = uc_hook_add(cpus.uc16, &ud->SpecialIns, UC_HOOK_INSN, LookUpSpecialIns, (void*)ud, 0, RAM_SIZE);
+    err = uc_hook_add(cpus.uc16, &ud->MemRead, UC_HOOK_MEM_READ_AFTER, MemR, ud, 0x7BEE0000, 0x7BEE0000+0x00020000);
+    err = uc_hook_add(cpus.uc16, &ud->MemWrite, UC_HOOK_MEM_WRITE, MemW, ud, 0x0000, 0x03FF);
+    err = uc_hook_add(cpus.uc16, &ud->InvalidIns, UC_HOOK_INSN_INVALID, InvalidInsHook, (void*)ud, 0, 0);
     err = uc_hook_add(cpus.uc32, &ud->SpecialIns, UC_HOOK_INSN, LookUpSpecialIns, (void*)ud, 0, RAM_SIZE);
-    //err = uc_hook_add(uc, &MemRead, UC_HOOK_MEM_READ_AFTER, MemR, ud, 0, RAM_SIZE);
-    //err = uc_hook_add(uc, &MemWrite, UC_HOOK_MEM_WRITE, MemW, ud, 0, RAM_SIZE);
+    err = uc_hook_add(cpus.uc32, &ud->MemRead, UC_HOOK_MEM_READ_AFTER, MemR, ud, 0x7BEE0000, 0x7BEE0000 + 0x00020000);
+    err = uc_hook_add(cpus.uc32, &ud->MemWrite, UC_HOOK_MEM_WRITE, MemW, ud, 0x0000, 0x03FF);
     err = uc_hook_add(cpus.uc32, &ud->InvalidIns, UC_HOOK_INSN_INVALID, InvalidInsHook, (void*)ud, 0, 0);
 #endif
     err = uc_hook_add(cpus.uc16, &ud->Inthook, UC_HOOK_INTR, LookUpUnicorn, (void*)ud, 0, 0);
@@ -41,7 +41,11 @@ void EmulationLoop(UnicornData* ud) {
         uint64_t ip = ud->cpu->GetFlatMemoryIP();
         err = uc_emu_start(ud->uc, ip, 0, 0, 0);
         EnterCriticalSection(&IRQ.cs);
-
+          for (int i = 0; i < sizeof(IRQ.io_request_pending); i++) {
+              if (IRQ.irq_pending[i]) {
+                  HardwareInt(i, ud);
+              }
+          }
         LeaveCriticalSection(&IRQ.cs);
     }
     std::cout << "VM Exit";
@@ -59,7 +63,8 @@ int main()
 
     BootDisk();
     running = true;
-    cpus.cpu16->RDX = 0xe0; {
+    cpus.cpu16->RDX = 0xe0;
+    cpus.cpu16->CR0 = 0x10; {
         uc_reg_write(cpus.uc16, UC_X86_REG_AX, &cpus.cpu16->RAX);
         uc_reg_write(cpus.uc16, UC_X86_REG_BX, &cpus.cpu16->RBX);
         uc_reg_write(cpus.uc16, UC_X86_REG_CX, &cpus.cpu16->RCX);
@@ -73,6 +78,7 @@ int main()
         uc_reg_write(cpus.uc16, UC_X86_REG_FS, &cpus.cpu16->FS);
         uc_reg_write(cpus.uc16, UC_X86_REG_DS, &cpus.cpu16->DS);
         uc_reg_write(cpus.uc16, UC_X86_REG_CS, &cpus.cpu16->CS);
+        uc_reg_write(cpus.uc16, UC_X86_REG_CR0, &cpus.cpu16->CR0);
         int flag = 0x202;
         uc_reg_write(cpus.uc16, UC_X86_REG_EFLAGS, &flag);
         xed_state_zero(&state);
