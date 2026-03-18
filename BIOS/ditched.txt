@@ -1,0 +1,401 @@
+//uint32_t hook_in(uint16_t port, int size, void* user_data, WHV_RUN_VP_EXIT_CONTEXT* exitctx, ThunkTranslate translateVAtoPA) {
+//    auto ioctx = &(exitctx->IoPortAccess);
+//    UD* ud = (UD*)user_data;
+//    PICState* pic = (PICState*)ud->pic;
+//    PCISystemBus* sb = (PCISystemBus*)ud->sb;
+//    uint32_t return_val;
+//    bool is_rep = ioctx->AccessInfo.RepPrefix;
+//    uint64_t va;
+//    uint64_t pa;
+//IO_OPERATION:
+//    if (is_rep) {
+//        if (!(ioctx->Rcx > 0)) {
+//            //all iteration done
+//            return 0;
+//        }
+//    }
+//    switch (port) {
+//        // 8259 PIC
+//    case 0x20: return_val = pic->master_icw_state; break; // master PIC status
+//    case 0x21: return_val = pic->master_mask; break; // master PIC mask (all masked)
+//    case 0xA0: return_val = pic->slave_icw_state; break; // slave PIC status
+//    case 0xA1: return_val = pic->slave_mask; break; // slave PIC mask
+//
+//    // 8254 PIT
+//    case 0x40: return_val = 0x00; break;
+//    case 0x41: return_val = 0x00; break;
+//    case 0x42: return_val = 0x00; break;
+//    case 0x43: return_val = 0x00; break;
+//    case 0x61: return_val = 0xff; break;
+//        // CMOS
+//    case 0x70: return_val = CMOS::cmos_index; break;
+//    case 0x71: {
+//        switch (CMOS::cmos_index)
+//        {
+//        case 0x0092: return_val = 0x02; break;
+//        default: {
+//            //TODO fix this
+//            // We need to change so UIP bit is set otherwise windows will freeze
+//            static bool test = true;
+//            if (CMOS::cmos_index == 0xa) {
+//                std::cout << "[CMOS] read " << std::hex << (uint32_t)CMOS::cmos_index << std::endl;
+//                if (test) {
+//                    return_val = 0xa6;
+//                    test = false;
+//                }
+//                else {
+//                    return_val = 0x26;
+//                    test = true;
+//                }
+//                break;
+//            }
+//            uint8_t val = (CMOS::cmos_index < 128) ? CMOS::cmos_data[CMOS::cmos_index] : 0;
+//            std::cout << "[CMOS] read " << std::hex << (uint32_t)CMOS::cmos_index << std::endl;
+//            return_val = val;
+//            break;
+//        }
+//        }
+//        break;
+//    }
+//             // POST/diagnostic
+//    case 0x80: return_val = 0x00; break;        
+//
+//    // PS/2 keyboard controller
+//    case 0x60: return_val = 0x00; break;
+//    case 0x64: return_val = 0x10; break; // input buffer empty
+//
+//    // PCI config space
+//    case 0xCF8:
+//    case 0xCFC:
+//    case 0xCFD:
+//    case 0xCFE:
+//    case 0xCFF:
+//        return_val = sb->in_hook(port, size);
+//        break;
+//    case 0x3C0: case 0x3C1: case 0x3C2: case 0x3C4:
+//    case 0x3C5: case 0x3CE: case 0x3CF: case 0x3D4:
+//    case 0x3D5: case 0x3DA: return_val = 0x00; break;
+//
+//    case 0x1F0:
+//    case 0x1F1:
+//    case 0x1F2:
+//    case 0x1F3:
+//    case 0x1F4:
+//    case 0x1F5:
+//    case 0x1F6:
+//    case 0x1F7:
+//    case 0x3F6:
+//    case 0x3F4:
+//    case 0x170:
+//    case 0x171:
+//    case 0x172:
+//    case 0x173:
+//    case 0x174:
+//    case 0x175:
+//    case 0x176:
+//    case 0x177:
+//    case 0x376:
+//    case 0x374:
+//        return_val = sb->in_hook(port, size);
+//        break;
+//    case 0x3d:
+//        return_val = 0x23;
+//        break;
+//    case 0x510:
+//        return_val = fw_cfg.selector;
+//        break;
+//    case 0x511:
+//        return_val = fw_cfg.read();
+//        break;
+//    case 0x92:
+//        return_val = 0x2;
+//        break;
+//
+//    case 0x3F8:
+//        if (KernelDebugger::lcr & 0x80) {
+//            return_val = KernelDebugger::baud_lo;
+//        }
+//        else {
+//            KernelDebugger::pipe_poll_rx();
+//            return_val = KernelDebugger::rx_ready ? KernelDebugger::rx_buf : 0x00;
+//            KernelDebugger::rx_ready = false;
+//        }
+//        break;
+//    case 0x3F9:
+//        return_val = (KernelDebugger::lcr & 0x80) ? KernelDebugger::baud_hi : KernelDebugger::ier;
+//        break;
+//    case 0x3FA:
+//        return_val = 0x01;   // IIR: no interrupt pending
+//        break;
+//    case 0x3FB:
+//        return_val = KernelDebugger::lcr;
+//        break;
+//    case 0x3FC:
+//        return_val = KernelDebugger::mcr;
+//        break;
+//    case 0x3FD:
+//        KernelDebugger::pipe_poll_rx();
+//        return_val = 0x60;                    // THRE + TEMT: TX always ready
+//        if (KernelDebugger::rx_ready) return_val |= 0x01;     // DR: data ready
+//        break;
+//    case 0x3FE:
+//        return_val = 0xB0;   // MSR: CTS, DSR, DCD all set
+//        break;
+//    case 0x3FF:
+//        return_val = KernelDebugger::scratch;
+//        break;
+//    case 0x2f8:
+//        return_val = 0x0;
+//        break;
+//    case 0x2fd:
+//        return_val = 0x60;
+//        break;
+//    default:
+//        printf("[IN ] port=0x%04X size=%d\n", port, size);
+//        return_val = 0x00;
+//    }
+//    if (is_rep) {
+//        char* loc = nullptr;
+//        va = (ioctx->Es.Base + ioctx->Rdi);
+//        //TODO: We dont need to translate VA to PA, We can translate on page boundary i suppose
+//        //translateVAtoPA(ud->whpxCtx, va, &pa);
+//        loc = RAM + va;
+//        for (int i = 0; i < ioctx->AccessInfo.AccessSize; i++) {
+//            loc[i] = ((uint8_t*)&return_val)[i];
+//        }
+//        if (exitctx->VpContext.Rflags & (1 << 10))
+//            ioctx->Rdi -= ioctx->AccessInfo.AccessSize;
+//        else
+//            ioctx->Rdi += ioctx->AccessInfo.AccessSize;
+//        ioctx->Rcx--;
+//        goto IO_OPERATION;
+//    }
+//    return return_val;
+//}
+//void hook_out(uint16_t port, int size, uint32_t value, void* user_data, WHV_RUN_VP_EXIT_CONTEXT* exitctx,ThunkTranslate translateVAtoPA) {
+//    UD* ud = (UD*)user_data;
+//    PICState* pic = (PICState*)ud->pic;
+//    PCISystemBus* sb = (PCISystemBus*)ud->sb;
+//    auto ioctx = &(exitctx->IoPortAccess);
+//    bool is_rep = ioctx->AccessInfo.RepPrefix;
+//    uint64_t va;
+//    uint64_t pa;
+//IO_OPERATION:
+//    if (is_rep) {
+//        if (!(ioctx->Rcx > 0)) {
+//            return;
+//        }
+//        va = getSegmentBase(ioctx->InstructionBytes[0],exitctx) + ioctx->Rsi;
+//        //This cause huge perfromance issue
+//        // should remove this
+//        // 50s execution time to less than 5s
+//        //translateVAtoPA(ud->whpxCtx, va, &pa);
+//        char* loc = RAM+va;
+//        value = 0xff;
+//        for (int i = 0; i < ioctx->AccessInfo.AccessSize; i++) {
+//            ((uint8_t*)&value)[i] = loc[i];
+//        }
+//        
+//    }
+//    switch (port) {
+//        // POST codes
+//    case 0x80:
+//        printf("[POST] 0x%02X\n", value & 0xFF);
+//        break;
+//
+//        // CMOS
+//    case 0x70:
+//        CMOS::cmos_index = value & 0x7F;
+//        break;
+//    case 0x71:
+//        switch (CMOS::cmos_index) {
+//        case 0xA: {
+//            uint8_t rs = value & 0x0F;
+//            pic->rtc_period = std::pow(2.0, rs - 1) / 32768.0;
+//            break;
+//        }
+//        case 0xB:
+//            pic->rtc_period_enabled = (value & 0x70) != 0;
+//            break;
+//        }
+//        if (CMOS::cmos_index < 128) CMOS::cmos_data[CMOS::cmos_index] = value & 0xFF;
+//        printf("[CMOS] write [0x%02X] = 0x%02X\n", CMOS::cmos_index, value & 0xFF);
+//        break;
+//
+//
+//        // 8259 PIC
+//    case 0x20:   // PIC1 Command
+//        if (value & 0x10) {
+//            pic->master_icw_state = 1;
+//            pic->master_mask.store(0xFF);
+//        }
+//        else if (value == 0x20) {
+//            // Non-specific EOI
+//        }
+//        else if ((value & 0xF8) == 0x60) {
+//            // Specific EOI
+//        }
+//        else if (value == 0x0A || value == 0x0B) {
+//            // IRR/ISR read latch
+//        }
+//        else if ((value & 0xE0) == 0x80) {
+//            // Rotate in auto EOI
+//        }
+//        else if ((value & 0xE0) == 0xC0) {
+//            // Set priority
+//        }
+//        else if ((value & 0xE0) == 0xA0) {
+//            // Rotate on non-specific EOI
+//        }
+//        else if ((value & 0xF8) == 0x40) {
+//            // Rotate on specific EOI
+//        }
+//        break;
+//    case 0x21:   // PIC1 Data
+//        if (pic->master_icw_state == 1) {
+//            pic->master_offset = value;
+//            pic->master_icw_state = 2;
+//            std::cout << "PIC1: Base = 0x"
+//                << std::hex << (int)value << std::endl;
+//        }
+//        else if (pic->master_icw_state == 2) {
+//            pic->master_icw_state = 3; // ICW3
+//        }
+//        else if (pic->master_icw_state == 3) {
+//            pic->master_icw_state = 0; // ICW4 done
+//            std::cout << "PIC1: Init complete\n";
+//        }
+//        else {
+//            pic->master_mask.store(value);
+//            std::cout << "PIC1: Mask = 0x"
+//                << std::hex << (int)value << std::endl;
+//        }
+//        break;
+//    case 0xA0:   // PIC2 Command
+//        if (value & 0x10) {
+//            pic->slave_icw_state = 1;
+//            std::cout << "PIC2: ICW1\n";
+//        }
+//        else if (value == 0x20) {
+//            //std::cout << "PIC2: EOI\n";
+//        }
+//        else {
+//            std::cerr << "Err: Invalid PIC2 command" << std::hex << value << std::endl;
+//        }
+//        break;
+//
+//    case 0xA1:   // PIC2 Data
+//        if (pic->slave_icw_state == 1) {
+//            pic->slave_offset = value;
+//            pic->slave_icw_state = 2;
+//            std::cout << "PIC2: Base = 0x" << std::hex << (int)value << std::endl;
+//        }
+//        else if (pic->slave_icw_state == 2) {
+//            pic->slave_icw_state = 3;
+//        }
+//        else if (pic->slave_icw_state == 3) {
+//            pic->slave_icw_state = 0;
+//            std::cout << "PIC2: Init complete\n";
+//        }
+//        else {
+//            pic->slave_mask.store(value);
+//            std::cout << "PIC2: Mask = 0x" << std::hex << (int)value << std::endl;
+//        }
+//        break;
+//    case 0x40: case 0x41: case 0x42: case 0x43:
+//        break;
+//    case 0x60: case 0x64:
+//        break;
+//    case 0xCF8:
+//        sb->out_hook(port, value, size);
+//        break;
+//    case 0xCFC:
+//    case 0xCFD:
+//    case 0xCFE:
+//    case 0xCFF:
+//        sb->out_hook(port, value, size);
+//        break;
+//    case 0x3C0: case 0x3C2: case 0x3C4: case 0x3C5:
+//    case 0x3CE: case 0x3CF: case 0x3D4: case 0x3D5:
+//        break;
+//    case 0x1F0:
+//    case 0x1F1:
+//    case 0x1F2:
+//    case 0x1F3:
+//    case 0x1F4:
+//    case 0x1F5:
+//    case 0x1F6:
+//    case 0x1F7:
+//    case 0x3F6:
+//    case 0x3F4:
+//    case 0x170:
+//    case 0x171:
+//    case 0x172:
+//    case 0x173:
+//    case 0x174:
+//    case 0x175:
+//    case 0x176:
+//    case 0x177:
+//    case 0x376:
+//    case 0x374:
+//        sb->out_hook(port, value, size);
+//        break;
+//    case 0x402:
+//        //printf("%c",value);
+//        break;
+//    case 0x61: ports.portsVal[port] = value;
+//        break;
+//    case 0x510: {
+//        if (size == 2) {
+//            fw_cfg.selector = value & 0xFFFF;
+//            fw_cfg.data_offset = 0;
+//        }
+//        break;
+//    }
+//    case 0x92:
+//        break;
+//
+//
+//    case 0x3F8:
+//        if (KernelDebugger::lcr & 0x80) {
+//            KernelDebugger::baud_lo = value & 0xFF;
+//        }
+//        else {
+//            uint8_t b = value & 0xFF;
+//            if (KernelDebugger::pipe_out != INVALID_HANDLE_VALUE) {
+//                DWORD written = 0;
+//                BOOL result = WriteFile(KernelDebugger::pipe_out, &b, 1, &written, NULL);
+//            }
+//        }
+//        break;
+//    case 0x3F9:
+//        if (KernelDebugger::lcr & 0x80)
+//            KernelDebugger::baud_hi = value & 0xFF;
+//        else
+//            KernelDebugger::ier = value & 0xFF;
+//        break;
+//    case 0x3FB:
+//        KernelDebugger::lcr = value & 0xFF;
+//        break;
+//    case 0x3FC:
+//        KernelDebugger::mcr = value & 0xFF;
+//        break;
+//    case 0x3FF:
+//        KernelDebugger::scratch = value & 0xFF;
+//        break;
+//    case 0x2f8:
+//        printf("%c",value);
+//        break;
+//    default:
+//        //printf("[OUT] port=0x%04X size=%d val=0x%X\n", port, size, value);
+//        break;
+//    }
+//    if (is_rep) {
+//        (exitctx->VpContext.Rflags & (1 << 10)) ?
+//            ioctx->Rsi -= ioctx->AccessInfo.AccessSize :
+//            ioctx->Rsi += ioctx->AccessInfo.AccessSize;
+//        ioctx->Rcx--;
+//        goto IO_OPERATION;
+//    }
+//
+//}

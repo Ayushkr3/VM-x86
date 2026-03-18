@@ -1,11 +1,15 @@
 #pragma once
 #include <chrono>
-#include "Global.h"
-//Forwarded declaration from PIC.h and APIC.h
-extern RaiseIRQ RaiseIRQ_fwd;
-struct PICState {
-    uint8_t master_offset = 0x14;
-    uint8_t slave_offset = 0x1c;
+#include <cstdint>
+#include <atomic>
+extern bool test;
+typedef void (*RaiseIRQ)(int vector);
+class PICState {
+public:
+    //Callback to raise interrupt
+    static RaiseIRQ raiseInt_fwd;
+    uint8_t master_offset = 0x8;
+    uint8_t slave_offset = 0x70;
 
     uint8_t master_icw_state = 0;
     uint8_t slave_icw_state = 0;
@@ -18,7 +22,10 @@ struct PICState {
     std::atomic<uint64_t> irq0_tick_count{ 0 };
     std::atomic<bool> reset_timing{ false };
     bool rtc_period_enabled = true;
-    uint32_t rtc_period = 1;
+    uint32_t rtc_period = 50;
 
+    bool IRQRaised=false;
+    void RaiseIRQ(int irqN);
 };
+extern PICState pic;
 void PITThread(PICState* pic);

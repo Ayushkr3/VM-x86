@@ -3,9 +3,10 @@
 #include <thread>
 #include"memory.h"
 #define PIT_CLOCK 1193182 
-//Forwarded declaration from PIC.h and APIC.h
-RaiseIRQ RaiseIRQ_fwd;
+PICState pic;
+RaiseIRQ PICState::raiseInt_fwd;
 using namespace std::chrono;
+bool test = true;
 double now() {
     static const auto start = std::chrono::high_resolution_clock::now();
     return std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
@@ -23,7 +24,8 @@ void PITThread(PICState* pic) {
             double pit_period = div / PIT_CLOCK;
             bool masked = pic->master_mask & 1;
             if (!masked) {
-                //RaiseIRQ_fwd(pic->master_offset);
+                if(test)
+                pic->RaiseIRQ(0x0);
             }
             pit_next += pit_period;
         }
@@ -31,10 +33,40 @@ void PITThread(PICState* pic) {
         {
             bool masked = pic->slave_mask & 1;
             if (!masked) {
-                RaiseIRQ_fwd(pic->slave_offset);
+                //pic->RaiseIRQ(0x8);
             }
             rtc_next += pic->rtc_period;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
+}
+void PICState::RaiseIRQ(int irqN)
+{
+    bool masked;
+    int vector=-1;
+
+    if (irqN < 8)
+    {
+        masked = (master_mask >> irqN) & 1;
+        if (masked)
+            return;
+
+        vector = master_offset + irqN;
+    }
+    else
+    {
+        int slave_irq = irqN - 8;
+
+        masked = (slave_mask >> slave_irq) & 1;
+        if (masked)
+            return;
+
+        // Slave interrupt also requires cascade through master IRQ2
+        if ((master_mask >> 2) & 1)
+            return;
+
+        vector = slave_offset + slave_irq;
+    }
+    IRQRaised = true;
+    raiseInt_fwd(vector);
 }

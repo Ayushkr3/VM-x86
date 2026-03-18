@@ -114,7 +114,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>KDDEBUG;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>D:\program\vs\BIOS\include\unicorn;D:\program\vs\BIOS\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
@@ -122,7 +122,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>D:\program\vs\BIOS\lib\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>SDL3.lib;unicorn.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>SDL3.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -141,30 +141,40 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>D:\program\vs\BIOS\lib\Release;</AdditionalLibraryDirectories>
-      <AdditionalDependencies>SDL3.lib;unicorn.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>SDL3.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="ACPI.cpp" />
     <ClCompile Include="APIC.cpp" />
     <ClCompile Include="CPU.cpp" />
     <ClCompile Include="Display.cpp" />
     <ClCompile Include="Global.cpp" />
+    <ClCompile Include="IDE_controller.cpp" />
     <ClCompile Include="io.cpp" />
+    <ClCompile Include="kd.cpp" />
     <ClCompile Include="memory.cpp" />
+    <ClCompile Include="PCI.cpp" />
     <ClCompile Include="PIC.cpp" />
+    <ClCompile Include="timer.cpp" />
     <ClCompile Include="VM.cpp" />
+    <ClCompile Include="Whpx.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ACPI.h" />
     <ClInclude Include="APIC.h" />
     <ClInclude Include="CPU.h" />
     <ClInclude Include="Display.h" />
     <ClInclude Include="font.h" />
+    <ClInclude Include="fw_cfg.h" />
     <ClInclude Include="Global.h" />
+    <ClInclude Include="IDE_controller.h" />
     <ClInclude Include="io.h" />
+    <ClInclude Include="kd.h" />
     <ClInclude Include="memory.h" />
+    <ClInclude Include="PCI.h" />
+    <ClInclude Include="PCI_def.h" />
     <ClInclude Include="PIC.h" />
+    <ClInclude Include="timer.h" />
+    <ClInclude Include="Whpx.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

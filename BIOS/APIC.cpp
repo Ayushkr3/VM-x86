@@ -143,7 +143,7 @@ static void ioapic_write_reg(IOAPICState* s, uint8_t reg, uint32_t val,LAPICStat
 
     printf("[IOAPIC] Write unknown reg=0x%02x val=0x%08x\n", reg, val);
 }
-void lapic_mmio_write(uc_engine* uc, uint64_t offset, unsigned int, uint64_t val, void* user_data) {
+void lapic_mmio_write(uint64_t offset, uint64_t val, void* user_data) {
     LIOAPIC* lapic = (LIOAPIC*)user_data;
     LAPICState* s = &lapic->state;
     switch (offset) {
@@ -300,7 +300,7 @@ void lapic_mmio_write(uc_engine* uc, uint64_t offset, unsigned int, uint64_t val
         break;
     }
 }
-uint64_t lapic_mmio_read(uc_engine*uc, uint64_t offset,unsigned int, void* user_data) {
+uint64_t lapic_mmio_read(uint64_t offset, void* user_data) {
     LIOAPIC* lapic = (LIOAPIC*)user_data;
     LAPICState* s = &lapic->state;
     switch (offset) {
@@ -397,7 +397,7 @@ uint64_t lapic_mmio_read(uc_engine*uc, uint64_t offset,unsigned int, void* user_
         return 0xFFFFFFFFu;
     }
 }
-uint64_t IOapic_mmio_read(uc_engine* uc, uint64_t offset, unsigned int, void* user_data) {
+uint64_t IOapic_mmio_read(uint64_t offset, void* user_data) {
     LIOAPIC* ctx = (LIOAPIC*)user_data;
 
     // Only the window register at +0x10 is readable.
@@ -414,7 +414,7 @@ uint64_t IOapic_mmio_read(uc_engine* uc, uint64_t offset, unsigned int, void* us
     printf("[IOAPIC Read]  unknown offset=0x%02x\n", (uint32_t)offset);
     return 0xFFFFFFFFu;
 }
-void IOapic_mmio_write(uc_engine* uc, uint64_t offset, unsigned int, uint64_t value, void* user_data) {
+void IOapic_mmio_write(uint64_t offset,uint64_t value, void* user_data) {
     LIOAPIC* ctx = (LIOAPIC*)user_data;
     uint32_t val = (uint32_t)value;
 

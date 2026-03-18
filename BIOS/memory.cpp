@@ -1,19 +1,14 @@
 #include "memory.h"
 char* RAM = nullptr;
+char* BIOS = nullptr;
 void InitMemory() {
-	RAM = (char*)malloc(RAM_SIZE);
-	ZeroMemory(RAM, RAM_SIZE);
+	RAM= (char*)VirtualAlloc(nullptr, RAM_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	//BIOS = (char*)VirtualAlloc(nullptr, BIOS_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	memset(RAM, 0,RAM_SIZE);
+	//ZeroMemory(BIOS, BIOS_SIZE);
 }
 void DeinitMemory() {
-	free(RAM);
-}
-void unicorn_mem_init(uc_engine* uc) {
-	if (RAM == nullptr) {
-		throw 0x0;
-	}
-	ok(uc_mem_map_ptr(uc, RAM_BASE, RAM_SIZE, UC_PROT_ALL, RAM));
-}
-void unicorn_add_mmio_region(uc_engine* uc, void* cpuS, uc_cb_mmio_read_t rLAPICHook, uc_cb_mmio_write_t wLAPIChook, uc_cb_mmio_read_t rIOAPICHook, uc_cb_mmio_write_t wIOAPIChook) {
-	ok(uc_mmio_map(uc, LAPIC_BASE, LAPIC_SIZE, rLAPICHook, cpuS, wLAPIChook, cpuS));
-	ok(uc_mmio_map(uc, IOAPIC_BASE, IOAPIC_SIZE, rIOAPICHook, cpuS, wIOAPIChook, cpuS));
+	
+	VirtualFree(RAM,RAM_SIZE, MEM_RELEASE| MEM_DECOMMIT);
+	//VirtualFree(BIOS, BIOS_SIZE, MEM_RELEASE | MEM_DECOMMIT);
 }

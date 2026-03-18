@@ -2,7 +2,6 @@
 #include <Windows.h>
 #include <iostream>
 #include <intrin.h>
-#include "unicorn.h"
 #include "APIC.h"
 #include "memory.h"
 #include "Global.h"
@@ -74,7 +73,11 @@ struct CPU {
 		Reg[19] = &CR4;
 		Reg[20] = &Eflag;
 		lapic.CPU_DATA = (void*)this;
+		Init_APIC(&lapic);
 	}
+	UINT32 interruption_pending;
+	UINT32 interruptable;
+	bool window_registered;
 	static bool inProtectedMode;
 	virtual void SetRegOrder(const int* _RegOrder) = 0;
 	virtual const int* GetRegOrder() = 0;
@@ -118,20 +121,14 @@ struct CPU16 :public CPU {
 	}
 };
 
-void ProtectedModeSwitchHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data);
-void PerBlockHook(uc_engine* uc, uint64_t address, uint32_t size, void* user_data);
 
 struct CPUctx {
-	HookData hookdata;
-	uc_engine* uc16;
-	uc_engine* uc32;
 	CPU* cpu16;
 	CPU* cpu32;
 	CPU* currentCPU;
-	uc_engine* currentEngine;
 	HookUserData hud;
 	CPUctx() {
-		cpu16 = new CPU16;
+		/*cpu16 = new CPU16;
 		cpu32 = new CPU32;
 		cpu16->SetRegOrder(RegOrder16);
 		cpu32->SetRegOrder(RegOrder32);
@@ -139,12 +136,12 @@ struct CPUctx {
 		ok(uc_open(uc_arch::UC_ARCH_X86, uc_mode::UC_MODE_32, &uc32));
 		unicorn_mem_init(uc16);
 		unicorn_mem_init(uc32);
-		Init_APIC(&cpu16->lapic);
-		unicorn_add_mmio_region(uc16,(void*)&(cpu16->lapic),lapic_mmio_read, lapic_mmio_write,IOapic_mmio_read,IOapic_mmio_write);
-		//unicorn_add_mmio_region(uc32, (void*)&(cpu32->lapic), lapic_mmio_read, lapic_mmio_write, IOapic_mmio_read, IOapic_mmio_write);
-		uc_hook_add(uc16, &hookdata.INS_IN, UC_HOOK_INSN, (void*)hook_in, (void*)&hud, 1, 0, UC_X86_INS_IN);
-		uc_hook_add(uc16, &hookdata.INS_OUT, UC_HOOK_INSN, (void*)hook_out, (void*)&hud, 1, 0, UC_X86_INS_OUT);
-		uc_hook_add(uc16, &hookdata.INS_INT, UC_HOOK_INTR, (void*)hook_intr, (void*)&hud, 1, 0);
+		Init_APIC(&cpu16->lapic);*/
+		//unicorn_add_mmio_region(uc16,(void*)&(cpu16->lapic),lapic_mmio_read, lapic_mmio_write,IOapic_mmio_read,IOapic_mmio_write);
+		////unicorn_add_mmio_region(uc32, (void*)&(cpu32->lapic), lapic_mmio_read, lapic_mmio_write, IOapic_mmio_read, IOapic_mmio_write);
+		//uc_hook_add(uc16, &hookdata.INS_IN, UC_HOOK_INSN, (void*)hook_in, (void*)&hud, 1, 0, UC_X86_INS_IN);
+		//uc_hook_add(uc16, &hookdata.INS_OUT, UC_HOOK_INSN, (void*)hook_out, (void*)&hud, 1, 0, UC_X86_INS_OUT);
+		//uc_hook_add(uc16, &hookdata.INS_INT, UC_HOOK_INTR, (void*)hook_intr, (void*)&hud, 1, 0);
 		//uc_hook_add(uc16, &hookdata.INS_WRMSR, UC_HOOK_INSN, (void*)hook_wrmsr, (void*)&hud, 1, 0, UC_X86_INS_WRMSR);
 		//uc_hook_add(uc16, &hookdata.INS_RDMSR, UC_HOOK_INSN, (void*)hook_rdmsr, (void*)&hud, 1, 0, UC_X86_INS_RDMSR);
 		//uc_hook_add(uc16, &hookdata.INS_CPUID, UC_HOOK_INSN, (void*)hook_cpuid, (void*)&hud, 1, 0, UC_X86_INS_CPUID);
@@ -155,12 +152,11 @@ struct CPUctx {
 		//uc_hook_add(uc32, &hookdata.ModeSwitch, UC_HOOK_BLOCK, (void*)PerBlockHook, (void*)this, 0, 0xFFFFFFFF);
 		//uc_hook_add(uc16, &hookdata.ModeSwitch, UC_HOOK_BLOCK, (void*)PerBlockHook, (void*)this, 0, 0xFFFFFFFF);
 		currentCPU = cpu16;
-		currentEngine = uc16;
 	}
 	~CPUctx() {
-		uc_close(uc16);
-		uc_close(uc32);
-		delete cpu16;
-		delete cpu32;
+		//uc_close(uc16);
+		//uc_close(uc32);
+		//delete cpu16;
+		//delete cpu32;
 	}
 };

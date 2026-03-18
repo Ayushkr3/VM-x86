@@ -39,7 +39,19 @@
     <ClCompile Include="CPU.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ACPI.cpp">
+    <ClCompile Include="PCI.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="IDE_controller.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Whpx.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="kd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="timer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -68,7 +80,25 @@
     <ClInclude Include="PIC.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ACPI.h">
+    <ClInclude Include="PCI.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="IDE_controller.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="PCI_def.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fw_cfg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Whpx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="kd.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="timer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

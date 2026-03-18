@@ -1,5 +1,4 @@
 #pragma once
-#include "unicorn.h"
 #include "Global.h"
 
 
@@ -147,8 +146,8 @@ struct LIOAPIC {
     IOAPICState ioapic;
 };
 
-uint64_t lapic_mmio_read(uc_engine* uc, uint64_t offset, unsigned int, void* user_data);
-void lapic_mmio_write(uc_engine* uc, uint64_t offset, unsigned int, uint64_t val, void* user_data);
-uint64_t IOapic_mmio_read(uc_engine* uc, uint64_t offset, unsigned int, void* user_data);
-void IOapic_mmio_write(uc_engine* uc, uint64_t offset, unsigned int, uint64_t val, void* user_data);
+uint64_t lapic_mmio_read(uint64_t offset, void* user_data);
+void lapic_mmio_write(uint64_t offset, uint64_t val, void* user_data);
+uint64_t IOapic_mmio_read(uint64_t offset, void* user_data);
+void IOapic_mmio_write(uint64_t offset, uint64_t val, void* user_data);
 void Init_APIC(LIOAPIC* apicCtx);
