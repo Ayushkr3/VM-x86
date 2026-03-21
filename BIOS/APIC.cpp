@@ -1,5 +1,8 @@
 ﻿#include "APIC.h"
 
+
+IOAPICState ioapic;
+
 static void lapic_init(LAPICState* s, uint8_t id)
 {
     s->id = id;
@@ -127,6 +130,7 @@ static void ioapic_write_reg(IOAPICState* s, uint8_t reg, uint32_t val,LAPICStat
 
         // Log when low word is written (entry is now complete/updated).
         if (!hi) {
+            s->redir->pin_nums = pin;
             printf("[IOAPIC] pin=%2u vec=0x%02x dest=0x%02x delmode=%u "
                 "trigger=%s polarity=%s destmode=%s %s\n",
                 pin,
@@ -402,14 +406,14 @@ uint64_t IOapic_mmio_read(uint64_t offset, void* user_data) {
 
     // Only the window register at +0x10 is readable.
     if (offset == 0x10) {
-        uint32_t val = ioapic_read_reg(&ctx->ioapic, ctx->ioapic.regsel);
-        printf("[IOAPIC Read]  reg=0x%02x = 0x%08x\n", ctx->ioapic.regsel, val);
+        uint32_t val = ioapic_read_reg(&ioapic, ioapic.regsel);
+        printf("[IOAPIC Read]  reg=0x%02x = 0x%08x\n", ioapic.regsel, val);
         return (uint64_t)val;
     }
 
     // IOREGSEL (+0x00) reads back the last value written to it.
     if (offset == 0x00)
-        return (uint64_t)ctx->ioapic.regsel;
+        return (uint64_t)ioapic.regsel;
 
     printf("[IOAPIC Read]  unknown offset=0x%02x\n", (uint32_t)offset);
     return 0xFFFFFFFFu;
@@ -420,13 +424,13 @@ void IOapic_mmio_write(uint64_t offset,uint64_t value, void* user_data) {
 
     if (offset == 0x00) {
         // IOREGSEL: select the indirect register to access.
-        ctx->ioapic.regsel = (uint8_t)(val & 0xFFu);
-        printf("[IOAPIC] REGSEL=0x%02x\n", ctx->ioapic.regsel);
+        ioapic.regsel = (uint8_t)(val & 0xFFu);
+        printf("[IOAPIC] REGSEL=0x%02x\n", ioapic.regsel);
     }
     else if (offset == 0x10) {
         // IOWIN: write through to the currently selected register.
-        printf("[IOAPIC Write] reg=0x%02x val=0x%08x\n", ctx->ioapic.regsel, val);
-        ioapic_write_reg(&ctx->ioapic, ctx->ioapic.regsel, val, &ctx->state);
+        printf("[IOAPIC Write] reg=0x%02x val=0x%08x\n", ioapic.regsel, val);
+        ioapic_write_reg(&ioapic, ioapic.regsel, val, &ctx->state);
     }
     else {
         printf("[IOAPIC Write] unknown offset=0x%02x val=0x%08x\n",
@@ -436,5 +440,5 @@ void IOapic_mmio_write(uint64_t offset,uint64_t value, void* user_data) {
 
 void Init_APIC(LIOAPIC* apicCtx) {
     lapic_init(&apicCtx->state,0);
-    ioapic_init(&apicCtx->ioapic);
+    ioapic_init(&ioapic);
 }

@@ -156,7 +156,7 @@ constexpr uint8_t LOG_DETAIL_ALL = 0xFF;
 // Configuration structure for IDE device
 struct IDEDeviceConfig {
     std::fstream* buffer = nullptr;
-    uint32_t buffer_size = 0;
+    uint64_t buffer_size = 0;
     bool is_cdrom = false;
 };
 
@@ -181,14 +181,14 @@ public:
 class IDEInterface {
 public:
     IDEInterface(IDEChannel* channel, uint8_t interface_nr,
-        std::fstream* buffer, uint32_t buffer_size, bool is_cd);
+        std::fstream* buffer, uint64_t buffer_size, bool is_cd);
     ~IDEInterface() = default;
 
     // Device operations
     bool hasDisk() const;
     void eject();
-    void setCdrom(std::fstream* buffer, uint32_t buffer_size);
-    void setDiskBuffer(std::fstream* buffer, uint32_t buffer_size);
+    void setCdrom(std::fstream* buffer, uint64_t buffer_size);
+    void setDiskBuffer(std::fstream* buffer, uint64_t buffer_size);
     void deviceReset();
     void ataBortCommand();
 
@@ -289,7 +289,7 @@ public:
 
 private:
     std::fstream* buffer = nullptr;
-    uint32_t buffer_size = 0;
+    uint64_t buffer_size = 0;
 
     uint32_t channel_nr;
     uint32_t interface_nr;

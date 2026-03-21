@@ -5,6 +5,7 @@
 
 uint8_t CMOS::cmos_data[128];
 uint8_t CMOS::cmos_index = 0;
+std::unordered_map<uint64_t, uint64_t> MSR::msr_values;
 uint32_t A20 = 0;
 IO ports;
 FWCfg fw_cfg;
@@ -28,85 +29,51 @@ void init_cmos() {
     // ── Equipment ──
     CMOS::cmos_data[0x14] = 0x0;  // color VGA, no floppy
     CMOS::cmos_data[0x10] = 0x00;
-    // ── Hard Disk Configuration ──
-    //CMOS::cmos_data[0x11] = 0x00;  // Reserved
-    //CMOS::cmos_data[0x12] = 0x2F;  // HD types (0 = use extended type)
-    //CMOS::cmos_data[0x13] = 0x00;  // Reserved
-    //CMOS::cmos_data[0x19] = 0x2F;  // HD 0 extended type (0 = not installed)
-    //CMOS::cmos_data[0x1A] = 0x00;  // HD 1 extended type (0 = not installed)
-
-    //// ── Hard Disk Parameters (0x1B-0x2C) ──
-    //// All zeros for no configured drives or modern IDE detection
-    //CMOS::cmos_data[0x1B] = 0x00;  // Cylinders low
-    //CMOS::cmos_data[0x1C] = 0x04;  // Cylinders high (1024 cyls)
-    //CMOS::cmos_data[0x1D] = 0x10;  // Heads (16)
-    //CMOS::cmos_data[0x1E] = 0x00;  // Write precomp low
-    //CMOS::cmos_data[0x1F] = 0x00;  // Write precomp high
-    //CMOS::cmos_data[0x20] = 0x00;  // Control byte
-    //CMOS::cmos_data[0x21] = 0x00;  // Landing zone low
-    //CMOS::cmos_data[0x22] = 0x04;  // Landing zone high
-    //CMOS::cmos_data[0x23] = 0x3F;  // Sectors per track (63)
 
     // ── Misc ──
     CMOS::cmos_data[0x2D] = 0x00;  // no floppy boot
-    CMOS::cmos_data[0x3D] = 0x31;  // Boot from hard disk
+    //CMOS::cmos_data[0x3D] = 0x31;  // Boot from hard disk
     CMOS::cmos_data[0x38] = 0x00;  // No special boot flags
 }
-uint64_t getSegmentBase(uint8_t opcode, WHV_RUN_VP_EXIT_CONTEXT* exitctx) {
-    switch (opcode)
-    {
-    case 0x26:
-        return exitctx->IoPortAccess.Es.Base;
-    case 0x36:
-        throw "Unimplemented"; //SS
-        return 0xffff;
-    case 0x64:
-        throw "Unimplemented"; //FS
-        return 0xffff;
-    case 0x65:
-        throw "Unimplemented"; //GS
-        return 0xffff;
-    default:
-        return exitctx->IoPortAccess.Ds.Base;
-        break;
-    }
-}
-
 
 void InitIDE(PCISystemBus* sb,std::string isoPath) {
     IDEDeviceConfig config[2][2] = {};
     //TODO: Delete this later
     std::fstream* iso = new std::fstream;
     iso->open(isoPath,std::ios::in | std::ios::binary);
-    //std::fstream* hd = new std::fstream;
-    //hd->open("D:\\windows nt\\disk0.diskX", std::ios::in | std::ios::out | std::ios::binary);
-    config[0][0].buffer = nullptr;
+    std::fstream* hd = new std::fstream;
+    hd->open("D:\\windows nt\\disk0.diskX", std::ios::in | std::ios::out | std::ios::binary);
+    config[0][0].buffer = hd;
     config[0][0].is_cdrom = false;
-    config[0][0].buffer_size = 0;
-
+    hd->seekg(0,std::ios::end);
+    config[0][0].buffer_size = hd->tellg();;
+    hd->seekg(std::ios::beg);
 
     config[0][1].buffer = nullptr;
     config[0][1].is_cdrom = false;
     config[0][1].buffer_size = 0;
 
-    config[1][1].buffer = nullptr;
-    config[1][1].is_cdrom = false;
-    config[1][1].buffer_size = 0;
+    config[1][0].buffer = nullptr;
+    config[1][0].is_cdrom = false;
+    config[1][0].buffer_size = 0;
 
-    config[1][0].buffer = iso;
-    config[1][0].is_cdrom = true;
+    config[0][1].buffer = iso;
+    config[0][1].is_cdrom = true;
     iso->seekg(0, std::ios::end);
-    config[1][0].buffer_size = (uint32_t)iso->tellg();
+    config[0][1].buffer_size = iso->tellg();
     iso->seekg(0, std::ios::beg);
 
     sb->ID = new IDEController(config);
     sb->AttachDevice((PCIDevice*)(sb->ID));
 }
-void InitIO(PCISystemBus* sb,RaiseIRQ rfwd, std::string isoPath) {
-    PICState::raiseInt_fwd = rfwd;
+void InitIO(PCISystemBus* sb, RaiseIRQ_f rfwd, std::string isoPath) {
+    PICState::Init(rfwd);
+    Timers::Init();
     InitIDE(sb, isoPath);
     init_cmos();
-    KernelDebugger::com1_init_pipe();
+    KernelDebugger::com1_init_pipe([]() {
+        pic.RaiseIRQ(0x4);
+    });
 }
 uint32_t hook_in(uint16_t port, int size, void* user_data) {
     UD* ud = (UD*)user_data;
@@ -131,23 +98,22 @@ uint32_t hook_in(uint16_t port, int size, void* user_data) {
     case 0x71: {
         switch (CMOS::cmos_index)
         {
+        case 0x00:
+        case 0x02:
+        case 0x04:
+        case 0x06:
+        case 0x07:
+        case 0x08:
+        case 0x09:
+        case 0x32:
+            return_val = Timers::ReturnCMOSData(CMOS::cmos_index);
+            break;
+        case 0xA:return_val = Timers::GetCMOSregA(); break;
+        case 0xB:return_val = Timers::GetCMOSregB(); break;
+        case 0xC:return_val = Timers::GetCMOSregC(); break;
+        case 0xD:return_val = Timers::GetCMOSregD(); break;
         case 0x0092: return_val = 0x02; break;
         default: {
-            //TODO fix this
-            // We need to change so UIP bit is set otherwise windows will freeze
-            static bool test = true;
-            if (CMOS::cmos_index == 0xa) {
-                std::cout << "[CMOS] read " << std::hex << (uint32_t)CMOS::cmos_index << std::endl;
-                if (test) {
-                    return_val = 0xa6;
-                    test = false;
-                }
-                else {
-                    return_val = 0x26;
-                    test = true;
-                }
-                break;
-            }
             uint8_t val = (CMOS::cmos_index < 128) ? CMOS::cmos_data[CMOS::cmos_index] : 0;
             std::cout << "[CMOS] read " << std::hex << (uint32_t)CMOS::cmos_index << std::endl;
             return_val = val;
@@ -184,7 +150,6 @@ uint32_t hook_in(uint16_t port, int size, void* user_data) {
     case 0x1F6:
     case 0x1F7:
     case 0x3F6:
-    case 0x3F4:
     case 0x170:
     case 0x171:
     case 0x172:
@@ -249,9 +214,12 @@ uint32_t hook_in(uint16_t port, int size, void* user_data) {
     case 0x2fd:
         return_val = 0x60;
         break;
+    case 0x402:
+        return_val = Timers::GetPMTimer();
+        break;
     default:
         printf("[IN ] port=0x%04X size=%d\n", port, size);
-        return_val = 0x00;
+        return_val = 0xff;
     }
     return return_val;
 }
@@ -273,11 +241,11 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
         switch (CMOS::cmos_index) {
         case 0xA: {
             uint8_t rs = value & 0x0F;
-            pic->rtc_period = std::pow(2.0, rs - 1) / 32768.0;
+            Timers::rtc_period = std::pow(2.0, rs - 1) / 32768.0;
             break;
         }
         case 0xB:
-            pic->rtc_period_enabled = (value & 0x70) != 0;
+            Timers::rtc_period_enabled = (value & 0x70) != 0;
             break;
         }
         if (CMOS::cmos_index < 128) CMOS::cmos_data[CMOS::cmos_index] = value & 0xFF;
@@ -292,25 +260,18 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
             pic->master_mask.store(0xFF);
         }
         else if (value == 0x20) {
-            // Non-specific EOI
         }
         else if ((value & 0xF8) == 0x60) {
-            // Specific EOI
         }
         else if (value == 0x0A || value == 0x0B) {
-            // IRR/ISR read latch
         }
         else if ((value & 0xE0) == 0x80) {
-            // Rotate in auto EOI
         }
         else if ((value & 0xE0) == 0xC0) {
-            // Set priority
         }
         else if ((value & 0xE0) == 0xA0) {
-            // Rotate on non-specific EOI
         }
         else if ((value & 0xF8) == 0x40) {
-            // Rotate on specific EOI
         }
         break;
     case 0x21:   // PIC1 Data
@@ -329,6 +290,7 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
         }
         else {
             pic->master_mask.store(value);
+            Timers::UpdateMasks(value, TIMER_MASK_TYPE::PIC1);
             std::cout << "PIC1: Mask = 0x"
                 << std::hex << (int)value << std::endl;
         }
@@ -361,6 +323,7 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
         }
         else {
             pic->slave_mask.store(value);
+            Timers::UpdateMasks(value, TIMER_MASK_TYPE::PIC2);
             std::cout << "PIC2: Mask = 0x" << std::hex << (int)value << std::endl;
         }
         break;
@@ -389,7 +352,6 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
     case 0x1F6:
     case 0x1F7:
     case 0x3F6:
-    case 0x3F4:
     case 0x170:
     case 0x171:
     case 0x172:
@@ -449,7 +411,7 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
         printf("%c", value);
         break;
     default:
-        //printf("[OUT] port=0x%04X size=%d val=0x%X\n", port, size, value);
+        printf("[OUT] port=0x%04X size=%d val=0x%X\n", port, size, value);
         break;
     }
 }
@@ -499,4 +461,41 @@ void hook_mmio_out(uint64_t PA, uint8_t* Data, uint16_t size, void* user_data) {
     else {
         std::cout << "Unknow MMIO" << std::endl;
     }
+}
+void hook_wrmsr(uint32_t index, uint32_t rax, uint32_t rdx) {
+    UINT64 value = ((UINT64)(rdx) << 32) | (rax & 0xFFFFFFFF);
+    MSR::msr_values[index]=value;
+    std::cout << "WRMSR" << std::hex << index << std::endl;
+}
+void hook_rdmsr(uint32_t index, uint32_t* rax, uint32_t* rdx) {
+    if (rax==nullptr && rdx==nullptr)throw 0;
+    uint64_t return_val = 0;
+    switch (index) {
+        // MCA Bank Control registers (0x400, 0x404, 0x408, ...)
+        // Each bank is 4 MSRs apart: CTL, STATUS, ADDR, MISC
+    case 0x400: // IA32_MC0_CTL
+    case 0x404: // IA32_MC1_CTL
+    case 0x408: // IA32_MC2_CTL
+    case 0x40C: // IA32_MC3_CTL
+        return_val = 0xFFFFFFFFFFFFFFFF; break;
+
+    // MCA Bank Status registers — return 0 (no errors)
+    case 0x401: // IA32_MC0_STATUS
+    case 0x405: // IA32_MC1_STATUS
+    case 0x409: // IA32_MC2_STATUS
+    case 0x40D: // IA32_MC3_STATUS
+        return_val = 0; break;
+
+        // MCA Bank ADDR/MISC — return 0
+    case 0x402: case 0x403:
+    case 0x406: case 0x407:
+    case 0x40A: case 0x40B:
+    case 0x40E: case 0x40F:
+        return_val = 0; break;
+    default:
+        std::cout << "Unhandled RDMSR" <<std::hex<<index<< std::endl;
+        return_val = 0; break;
+    }
+    *rax = return_val & 0xFFFFFFFF;
+    *rdx = (return_val >> 32) & 0xFFFFFFFF;
 }

@@ -68,6 +68,7 @@ class WHPX {
 	WHV_PARTITION_HANDLE partition;
 	void* ud;
 	static void* currentCtx;
+	std::atomic<bool> InterruptLock;
 public:
 	whCPUctx* cpuctx;
 	WHPX(void* user_data_in_out);
@@ -77,6 +78,7 @@ public:
 	void GVAtoGPA(WHV_GUEST_VIRTUAL_ADDRESS va,WHV_GUEST_PHYSICAL_ADDRESS* pa);
 	void RaiseInterrupt(int intN);
 	void EnableStepMode();
+	void BumpRIP(WHV_RUN_VP_EXIT_CONTEXT* exit_ctx);
 	void UnitTest(int intN);
 	static void ThunkGVAtoGPA(void* ctx	,WHV_GUEST_VIRTUAL_ADDRESS va, WHV_GUEST_PHYSICAL_ADDRESS* pa);
 	static void ThunkRaiseInterrupt(int intN);

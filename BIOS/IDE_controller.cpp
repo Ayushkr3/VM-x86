@@ -82,7 +82,7 @@ std::unordered_map<uint8_t, ATAPICommandInfo> createAtapiCmdMap() {
 
 // IDEInterface implementation
 IDEInterface::IDEInterface(IDEChannel* channel, uint8_t interface_nr,
-    std::fstream* buffer, uint32_t buffer_size, bool is_cd)
+    std::fstream* buffer, uint64_t buffer_size, bool is_cd)
     : channel(channel), interface_nr(interface_nr),
     is_atapi(is_cd), buffer(buffer), buffer_size(buffer_size),
     drive_connected(is_cd || buffer != nullptr), sector_size(is_cd ? CDROM_SECTOR_SIZE : HD_SECTOR_SIZE),
@@ -123,14 +123,14 @@ void IDEInterface::eject() {
     }
 }
 
-void IDEInterface::setCdrom(std::fstream* new_buffer, uint32_t new_buffer_size) {
+void IDEInterface::setCdrom(std::fstream* new_buffer, uint64_t new_buffer_size) {
     if (is_atapi && new_buffer) {
         setDiskBuffer(new_buffer, new_buffer_size);
         medium_changed = true;
     }
 }
 
-void IDEInterface::setDiskBuffer(std::fstream* new_buffer, uint32_t new_buffer_size) {
+void IDEInterface::setDiskBuffer(std::fstream* new_buffer, uint64_t new_buffer_size) {
     if (!new_buffer || new_buffer_size == 0) {
         return;
     }
@@ -163,7 +163,7 @@ void IDEInterface::setDiskBuffer(std::fstream* new_buffer, uint32_t new_buffer_s
         std::cout << name << ": warning: rounding up cylinder count" << std::endl;
     }
 
-    pushIrq();
+    //pushIrq();
 }
 
 void IDEInterface::deviceReset() {
@@ -292,7 +292,7 @@ void IDEInterface::readEnd() {
             uint32_t sector_count;
             if (current_command == ATA_CMD_READ_MULTIPLE ||
                 current_command == ATA_CMD_READ_MULTIPLE_EXT) {
-                sector_count = std::min(sectors_per_drq,
+                sector_count = min(sectors_per_drq,
                     (data_length - data_end) / 512);
             }
             else {
@@ -538,12 +538,13 @@ void IDEInterface::setState(const std::vector<uint64_t>& state) {
 void IDEInterface::ataCommand(uint8_t cmd) {
     if (!drive_connected && cmd != ATA_CMD_EXECUTE_DEVICE_DIAGNOSTIC) {
         std::cout << name << ": ATA command ignored: no drive connected" << std::endl;
-        //return;
+        //ataBortCommand();
+        return;
     }
 
     current_command = cmd;
     error_reg = 0;
-
+    static bool busy = true;
     switch (cmd) {
     case ATA_CMD_DEVICE_RESET:
         deviceReset();
@@ -576,10 +577,11 @@ void IDEInterface::ataCommand(uint8_t cmd) {
             break;
         }
         if (is_atapi) {
-            status_reg = ATA_SR_DRDY | ATA_SR_ERR;
+            // status_reg = ATA_SR_DRDY | ATA_SR_ERR| ATA_SR_DSC;
             lba_mid_reg = ATAPI_SIGNATURE_LO;
             lba_high_reg = ATAPI_SIGNATURE_HI;
             error_reg = ATA_ER_ABRT;
+            ataBortCommand();
             break;
         }
         createIdentifyPacket();
@@ -592,7 +594,7 @@ void IDEInterface::ataCommand(uint8_t cmd) {
             return;
         }
         if (!is_atapi) {
-            sector_count_reg = 0x01;
+            sector_count_reg = 0x00;
             lba_low_reg = 0x01;
             lba_mid_reg = 0x00;
             lba_high_reg = 0x00;
@@ -602,14 +604,14 @@ void IDEInterface::ataCommand(uint8_t cmd) {
             break;
         }
         createIdentifyPacket();
-        status_reg = ATA_SR_DRDY | ATA_SR_DRQ;
+        status_reg = ATA_SR_DRDY | ATA_SR_DRQ| ATA_SR_DSC;
         pushIrq();
         break;
     case ATA_CMD_PACKET:
         if (is_atapi) {
             dataAllocate(12);
             data_end = 12;
-            status_reg = ATA_SR_DRDY| ATA_SR_DRQ;
+            status_reg = ATA_SR_DRDY|ATA_SR_DSC |ATA_SR_DRQ;
             pushIrq();
         }
         else {
@@ -639,8 +641,8 @@ void IDEInterface::ataReadSectors(uint8_t cmd) {
         readBuffer(start, byte_count, [this, cmd, count, byte_count](const uint8_t* data) {
             dataSet(data, byte_count);
             status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
-            data_end = std::min(byte_count, sectors_per_drq * 512);
-            ataAdvance(cmd, std::min(count, sectors_per_track));
+            data_end = min(byte_count, sectors_per_drq * 512);
+            ataAdvance(cmd, min(count, sectors_per_track));
             pushIrq();
             reportReadEnd(byte_count);
             });
@@ -659,7 +661,7 @@ void IDEInterface::ataWriteSectors(uint8_t cmd) {
     if (buffer && start + byte_count <= buffer_size) {
         status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
         dataAllocateNoClear(byte_count);
-        data_end = std::min(byte_count, sectors_per_drq * 512);
+        data_end = min(byte_count, sectors_per_drq * 512);
         write_dest = start;
     }
 }
@@ -802,11 +804,11 @@ void IDEInterface::atapiRead(std::vector<uint8_t> cmd) {
     {
         status_reg = ATA_SR_DRDY | ATA_SR_DSC|ATA_SR_DRQ;
         data_pointer = 0;
-        //push_irq();
+        pushIrq();
     }
     else
     {
-        byte_count = std::min(byte_count, buffer_size - start);
+        byte_count = min(byte_count, buffer_size - start);
         status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_BSY;
         readBuffer(start, byte_count, [this,&req_length, cmd, count, byte_count](const uint8_t* data)
         {
@@ -872,7 +874,7 @@ void IDEInterface::createIdentifyPacket() {
             }
         }
     };
-    uint32_t cyl_count = std::min(16383U, cylinder_count);
+    uint32_t cyl_count = min(16383U, cylinder_count);
 
     std::fill(data.begin(), data.begin() + 512, 0);
     const uint16_t major_version = 0x0000;
@@ -954,7 +956,7 @@ void IDEInterface::createIdentifyPacket() {
     // -----------------------------
     // Word 49 – Capabilities
     // -----------------------------
-    data[98] = 0;
+    data[98] = 0b00000010;
     data[99] = 0;
 
     // Word 50 reserved
@@ -1057,6 +1059,8 @@ void IDEInterface::createIdentifyPacket() {
     data[174] = feat_84 & 0xFF;
     data[175] = (feat_84 >> 8) & 0xFF;
 
+    data[176] = 0x00;
+    data[177] = 0x00;
     // -----------------------------
     // Word 93 – Hardware reset
     // -----------------------------
@@ -1095,7 +1099,7 @@ IDEChannel::IDEChannel(IDEController* controller, uint8_t channel_nr,
     const IDEDeviceConfig* channel_config,
     uint32_t command_base, uint32_t control_base, uint8_t irq)
     : controller(controller), channel_nr(channel_nr), command_base(command_base),
-    control_base(control_base), irq(irq), device_control_reg(0),
+    control_base(control_base), irq(irq), device_control_reg(ATA_CR_NIEN),
     prdt_addr(0), dma_status(0), dma_command(0)
 {
     name = "ide" + std::to_string(channel_nr);
@@ -1116,24 +1120,20 @@ IDEChannel::IDEChannel(IDEController* controller, uint8_t channel_nr,
 }
 
 uint32_t IDEChannel::readStatus() {
-    //return current_interface->drive_connected ? current_interface->status_reg : 0;
-    uint8_t st = current_interface->status_reg;
-    return st;
+    return current_interface->drive_connected ? current_interface->status_reg : 0;
+    //uint8_t st = current_interface->status_reg;
+    //return st;
 }
 
 void IDEChannel::writeControl(uint8_t data) {
-    bool old = device_control_reg & ATA_CR_SRST;
-    bool now = data & ATA_CR_SRST;
-
-    device_control_reg = data;
-
-    if (old && !now) {
+    if (data & ATA_CR_SRST) {
         master->deviceReset();
         slave->deviceReset();
         if (!(device_control_reg & ATA_CR_NIEN)) {
             pushIrq();
         }
     }
+    device_control_reg = data;
 }
 
 uint32_t IDEChannel::dmaReadAddr() {
@@ -1203,7 +1203,7 @@ void IDEChannel::dmaWriteCommand8(uint8_t value) {
 void IDEChannel::pushIrq() {
     if (!(device_control_reg & ATA_CR_NIEN)){
         dma_status |= 4;
-        //pic.RaiseIRQ(irq);
+        pic.RaiseIRQ(irq);
     }
 }
 
@@ -1260,19 +1260,21 @@ IDEController::IDEController(
     PCIDevice::config[1] = (vendor_id >> 8) & 0xFF;
     PCIDevice::config[2] = device_id & 0xFF;
     PCIDevice::config[3] = (device_id >> 8) & 0xFF;
+    PCIDevice::config[0x04] = 0x01;
     PCIDevice::config[0xa] = 0x1;
     PCIDevice::config[0xb] = 0x1;
     PCIDevice::config[0x9] = 0x0;
     if (has_primary) {
         PCIDevice::config[0x10] = 0x1F0|1;  // BAR0
-        PCIDevice::config[0x14] = 0x3F6|1;  // BAR1
+        PCIDevice::config[0x14] = 0x3F6| 1;  // BAR1
     }
     if (has_secondary) {
         PCIDevice::config[0x18] = 0x170|1;  // BAR2
         PCIDevice::config[0x1c] = 0x376|1;  // BAR3
     }
-    PCIDevice::config[0x20] = 0xff;  // BAR4
-    PCIDevice::config[0x30] = 0x0;  // BAR5
+    PCIDevice::config[0x20] = 0x1;  // BAR4
+    PCIDevice::config[0x24] = 0x1;  // BAR5
+    PCIDevice::config[0x30] = 0x1;  // BAR6
 }
 
 std::vector<uint64_t> IDEController::getState() const {

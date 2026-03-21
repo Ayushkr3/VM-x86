@@ -132,6 +132,7 @@ typedef struct {
     uint32_t low;    // vector[7:0], delmode[10:8], destmode[11], status[12],
                      // polarity[13], remirr[14], trigger[15], mask[16]
     uint32_t high;   // dest[31:24] (physical or logical)
+    uint32_t pin_nums;
 } IOREDEntry;
 typedef struct {
     uint8_t    id;
@@ -143,9 +144,9 @@ typedef struct {
 struct LIOAPIC {
 	void* CPU_DATA;
     LAPICState state;
-    IOAPICState ioapic;
+    //IOAPICState ioapic;
 };
-
+extern IOAPICState ioapic;
 uint64_t lapic_mmio_read(uint64_t offset, void* user_data);
 void lapic_mmio_write(uint64_t offset, uint64_t val, void* user_data);
 uint64_t IOapic_mmio_read(uint64_t offset, void* user_data);

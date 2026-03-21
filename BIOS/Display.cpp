@@ -20,6 +20,7 @@ void DisplayInit() {
 	outWindow = SDL_CreateWindow("Video Output", 720, 400, SDL_WINDOW_OPENGL);
 	glCtx = SDL_GL_CreateContext(outWindow);
 	renderer = SDL_CreateRenderer(outWindow, NULL);
+	
 	DisplayTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, DISPLAY_W, DISPLAY_H);
 }
 static uint32_t framebuffer[DISPLAY_W * DISPLAY_H] = { 0 };

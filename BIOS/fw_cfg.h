@@ -96,7 +96,7 @@ struct FWCfg {
 
         // bootorder
         std::string bootorder =
-            "/pci@i0cf8/*@2/drive@1/disk@0\n"   // CD-ROM (ata1-0)
+            "/pci@i0cf8/*@2/drive@0/disk@1\n"   // CD-ROM (ata1-0)
             "/pci@i0cf8/*@2/drive@0/disk@0\n";  // HD (ata0-0)
         addFile("bootorder",
             std::vector<uint8_t>(bootorder.begin(), bootorder.end()));

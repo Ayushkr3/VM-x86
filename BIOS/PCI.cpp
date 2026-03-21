@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <cstring>
 #include <queue>
-
+bool tester = false;
 // ============================================================================
 // MINIMAL SETUP - Just constructor
 // ============================================================================
@@ -78,27 +78,35 @@ void PCISystemBus::out_hook(uint32_t port, uint32_t value, int size) {
 IDE_COMMAND:
         switch (offset) {
         case 0x00: dev->writeDataPort(value,size);        break;  // Data
-        case 0x01: dev->features_reg = (dev->drive_connected)?value:0xff;             break;  // Features
-        case 0x02: dev->sector_count_reg = (dev->drive_connected) ? value : 0xff;     break;  // Sector count
-        case 0x03: dev->lba_low_reg = (dev->drive_connected) ? value : 0xff;          break;  // LBA Low
-        case 0x04: dev->lba_mid_reg = (dev->drive_connected) ? value : 0xff;          break;  // LBA Mid
-        case 0x05: dev->lba_high_reg = (dev->drive_connected) ? value : 0xff;         break;  // LBA High
-        case 0x06:
-            channel->current_interface = (value & 0x10) ? channel->slave : channel->master;
-            channel->current_interface->device_reg = value;
-            if (!dev->is_atapi) {
-                channel->current_interface->is_lba = (value >> 6) & 1;
-                channel->current_interface->head = value & 0xF;
+        case 0x01: dev->features_reg = (dev->drive_connected)?value:0;             break;  // Features
+        case 0x02: dev->sector_count_reg = (dev->drive_connected) ? value : 0;     break;  // Sector count
+        case 0x03: dev->lba_low_reg = (dev->drive_connected) ? value : 0;          break;  // LBA Low
+        case 0x04: dev->lba_mid_reg = (dev->drive_connected) ? value : 0;          break;  // LBA Mid
+        case 0x05: dev->lba_high_reg = (dev->drive_connected) ? value : 0;         break;  // LBA High
+        case 0x06: {
+            bool select_slave = (value & 0x10);
+            if ((select_slave && channel->current_interface == channel->master)
+                || (!select_slave && channel->current_interface == channel->slave)) {
+                if (select_slave) {
+                    channel->current_interface = channel->slave;
+                }
+                else {
+                    channel->current_interface = channel->master;
+                }
             }
-            dev = channel->current_interface;
+            channel->current_interface->device_reg = value;
+            channel->current_interface->is_lba = value >> 6 & 1;
+            channel->current_interface->head = value & 0xf;
+            //dev = channel->current_interface;
+        }
             break;
         case 0x07:
-            dev->ataCommand(value);
+            channel->current_interface->status_reg &= ~(ATA_SR_ERR | ATA_SR_DF);
+            channel->current_interface->ataCommand(value);
             break;
         }
         return;
 }
-
 uint32_t PCISystemBus::in_hook(uint32_t port, int size) {
     // PCI CONFIG
     if (port == 0xCF8) return index;
@@ -119,21 +127,21 @@ uint32_t PCISystemBus::in_hook(uint32_t port, int size) {
     IDEInterface* dev;
 
     if (port >= 0x1F0 && port <= 0x1F7) {
-        if (!ID->primary)return 0xff;
+        if (!ID->primary)return 0;
         offset = port - 0x1F0;
         dev = ID->primary->current_interface;
         if (dev)goto IDE_COMMAND;
     }
     if (port == 0x3F6) {
-        if (!ID->primary)return 0xff;
+        if (!ID->primary)return 0;
         return ID->primary->readStatus();
     }
     if (port == 0x376) {
-        if (!ID->secondary)return 0xff;
+        if (!ID->secondary)return 0;
         return ID->secondary->readStatus();
     }
     if (port >= 0x170 && port <= 0x177) {
-        if (!ID->secondary)return 0xff;
+        if (!ID->secondary)return 0;
         offset = port - 0x170;
         dev = ID->secondary->current_interface;
         if (dev)goto IDE_COMMAND;
@@ -143,14 +151,16 @@ uint32_t PCISystemBus::in_hook(uint32_t port, int size) {
 IDE_COMMAND:
     switch (offset) {
     case 0x00: return dev->readData(size);           // Data
-    case 0x01: return dev->drive_connected ? dev->error_reg : 0xFF;
-    case 0x02: return dev->drive_connected ? dev->sector_count_reg : 0xFF;
-    case 0x03: return dev->drive_connected ? dev->lba_low_reg : 0xFF;
-    case 0x04: return dev->drive_connected ? dev->lba_mid_reg : 0xFF;
-    case 0x05: return dev->drive_connected ? dev->lba_high_reg : 0xFF;          // LBA High
+    case 0x01: return dev->error_reg;
+    case 0x02: return dev->sector_count_reg;
+    case 0x03: return dev->lba_low_reg;
+    case 0x04: return dev->lba_mid_reg;
+    case 0x05: return dev->lba_high_reg;          // LBA Hih
     case 0x06: return dev->device_reg;            // Device
-    case 0x07:
-        return (dev->drive_connected) ? dev->status_reg : 0x00;
+    case 0x07: {
+        uint64_t ret  = (dev->drive_connected) ? dev->status_reg : 0;
+        return ret;
+    }
     }
     return 0xFF;
 }

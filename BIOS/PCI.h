@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 // HostBridge  (8086:1237)
 // ---------------------------------------------------------------------------
+extern bool tester;
 class HostBridge : public PCIDevice {
 public:
     HostBridge() {
@@ -61,4 +62,4 @@ public:
     }
 };
 
-void InitPCI(RaiseIRQ rfwd);
+//void InitPCI(RaiseIRQ rfwd);

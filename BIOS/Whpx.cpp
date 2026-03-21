@@ -3,43 +3,37 @@ short whCPUctx::VPcount = 0;
 WHV_PARTITION_HANDLE whCPUctx::Partition;
 void* WHPX::currentCtx = nullptr;
 
-static int testN=-1;
+static int requestedIRQ=-1;
 void WHPX::RaiseInterrupt(int intN) {
     WHV_REGISTER_NAME n = WHvX64RegisterDeliverabilityNotifications;
     WHV_REGISTER_VALUE v = {};
     v.DeliverabilityNotifications.InterruptNotification = 1;
-    WHvSetVirtualProcessorRegisters(partition, 0, &n, 1, &v);
-    testN = intN;
+    ok(WHvSetVirtualProcessorRegisters(partition, 0, &n, 1, &v));
+    requestedIRQ = intN;
 }
 
 void WHPX::UnitTest(int intN) {
     WHV_REGISTER_NAME n = WHvRegisterPendingEvent;
     WHV_REGISTER_VALUE v = {};
     HRESULT hx=0;
- 
-    
-    //hx = WHvSetVirtualProcessorRegisters(partition, 0, &n, 1, &v);
-    WHV_REGISTER_NAME names = WHvX64RegisterRflags;
-    WHV_REGISTER_VALUE vals;
-    WHvGetVirtualProcessorRegisters(partition, 0, &names, 1, &vals);
-    uint64_t rflags = vals.Reg64;
-    bool IF = (rflags & (1 << 9)) != 0;
-
-    // Final decision
-    bool interruptible = IF;
-
-    if (!interruptible)
-        return;
+    n = WHvRegisterInterruptState;
+    v = {};
+    ok(WHvGetVirtualProcessorRegisters(partition, 0, &n, 1, &v));
+    if (v.InterruptState.InterruptShadow)return;
     n = WHvRegisterPendingEvent;
     v = {};
     v.ExtIntEvent.EventPending = 1;
     v.ExtIntEvent.EventType = WHvX64PendingEventExtInt;
-    v.ExtIntEvent.Vector = intN;
-    
-    ok(WHvSetVirtualProcessorRegisters(partition, 0, &n, 1, &v));
-    //EnableStepMode();
+    //TODO: Need to check validity of interrupt before devlivering
+    int vec = pic.GetVectorFromIRQ(intN);
+    if (vec != -1) {
+        v.ExtIntEvent.Vector = vec;
+        ok(WHvSetVirtualProcessorRegisters(partition, 0, &n, 1, &v));
+        pic.ReleaseTimerLock();
+    }
 }
 void WHPX::RunVP() {
+    
     WHV_RUN_VP_EXIT_CONTEXT exit_ctx = {};
     while (running) {
         exit_ctx = {};
@@ -48,7 +42,7 @@ void WHPX::RunVP() {
         switch (exit_ctx.ExitReason)
         {
         case WHV_RUN_VP_EXIT_REASON::WHvRunVpExitReasonX64IoPortAccess: {
-            //TODO: shift this to WhvEmulator
+            //Slow as balls but will not be called frequently hopefully
             WHV_EMULATOR_STATUS emuS;
             ok(WHvEmulatorTryIoEmulation(emuH, this, &exit_ctx.VpContext, &exit_ctx.IoPortAccess,&emuS));
             if (!emuS.EmulationSuccessful) {
@@ -57,7 +51,7 @@ void WHPX::RunVP() {
             break;
         }
         case WHvRunVpExitReasonX64InterruptWindow: {
-            UnitTest(testN);
+            UnitTest(requestedIRQ);
             break;
         }
         case WHvRunVpExitReasonMemoryAccess: {
@@ -69,13 +63,40 @@ void WHPX::RunVP() {
             }
             break;
         }
+        case WHvRunVpExitReasonX64MsrAccess: {
+            WHV_X64_MSR_ACCESS_CONTEXT msr = exit_ctx.MsrAccess;
+            if (msr.AccessInfo.IsWrite) {
+                hook_wrmsr(msr.MsrNumber,msr.Rax,msr.Rdx);
+            }
+            else {
+                uint32_t rax=0;
+                uint32_t rdx=0;
+                hook_rdmsr(msr.MsrNumber,&rax,&rdx);
+                WHV_REGISTER_NAME names[2] = { WHvX64RegisterRax ,WHvX64RegisterRdx };
+                WHV_REGISTER_VALUE vals[2] = {0};
+                vals[0].Reg32 = rax;
+                vals[1].Reg32 = rdx;
+                ok(WHvSetVirtualProcessorRegisters(partition, cpuctx->vpindex, names, 2, vals));
+            }
+            BumpRIP(&exit_ctx);
+            break;
+        }
         default:
+            WHV_REGISTER_NAME names = WHvRegisterInternalActivityState;
+            WHV_REGISTER_VALUE vals;
+            WHvGetVirtualProcessorRegisters(partition, 0, &names, 1, &vals);
             PRINT_HEX(exit_ctx.VpContext.Cs.Base);
             PRINT_HEX(exit_ctx.VpContext.Rip);
             std::cout << "WHPX Exit: " << exit_ctx.ExitReason << std::endl;
             break;
         }
     }
+}
+void WHPX::BumpRIP(WHV_RUN_VP_EXIT_CONTEXT* exit_ctx) {
+    WHV_REGISTER_NAME names = WHvX64RegisterRip;
+    WHV_REGISTER_VALUE vals = {};
+    vals.Reg64 = exit_ctx->VpContext.Rip + exit_ctx->VpContext.InstructionLength;
+    ok(WHvSetVirtualProcessorRegisters(partition, 0, &names, 1, &vals));
 }
 void WHPX::ThunkGVAtoGPA(void* ctx, WHV_GUEST_VIRTUAL_ADDRESS va, WHV_GUEST_PHYSICAL_ADDRESS* pa) {
     WHPX* c = (WHPX*)ctx;
@@ -114,6 +135,7 @@ void WHPX::EnableStepMode() {
     WHvSetVirtualProcessorRegisters(partition, 0, &n, 1, &v);
 }
 WHPX::WHPX(void* user_data_in_out) {
+    InterruptLock.store(true);
     ok(WHvCreatePartition(&partition));
     WHV_PARTITION_PROPERTY property{};
 
@@ -132,17 +154,18 @@ WHPX::WHPX(void* user_data_in_out) {
     ok(WHvSetPartitionProperty(partition, code, &property, sizeof(property)));
     
     property = {};
-    WHV_X64_MSR_EXIT_BITMAP msr_b;
+    WHV_X64_MSR_EXIT_BITMAP msr_b = {};
     msr_b.UnhandledMsrs = 1;
-    msr_b.TscMsrWrite = 1;
-    msr_b.TscMsrRead = 1;
-    msr_b.ApicBaseMsrWrite = 1;
-    //property.X64MsrExitBitmap = msr_b;
-    //code = WHV_PARTITION_PROPERTY_CODE::WHvPartitionPropertyCodeX64MsrExitBitmap;
-    //ok(WHvSetPartitionProperty(partition, code, &property, sizeof(property)));
+    msr_b.TscMsrWrite = 0;
+    msr_b.TscMsrRead = 0;
+    msr_b.ApicBaseMsrWrite = 0;
+    property.X64MsrExitBitmap = msr_b;
+    code = WHV_PARTITION_PROPERTY_CODE::WHvPartitionPropertyCodeX64MsrExitBitmap;
+    ok(WHvSetPartitionProperty(partition, code, &property, sizeof(property)));
 
     property = {};
-    property.ExtendedVmExits.ExceptionExit = 1;
+    //property.ExtendedVmExits.ExceptionExit = 1;
+    property.ExtendedVmExits.X64MsrExit = 1;
     code = WHV_PARTITION_PROPERTY_CODE::WHvPartitionPropertyCodeExtendedVmExits;
     ok(WHvSetPartitionProperty(partition, code, &property, sizeof(property)));
 

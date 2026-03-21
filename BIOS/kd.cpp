@@ -10,8 +10,9 @@ uint8_t KernelDebugger::mcr=0;
 uint8_t KernelDebugger::scratch=0;
 uint8_t KernelDebugger::baud_lo=0;
 uint8_t KernelDebugger::baud_hi=0;
+std::function<void()> KernelDebugger::callbac;
 
-void KernelDebugger::com1_init_pipe() {
+void KernelDebugger::com1_init_pipe(std::function<void()> callback) {
     pipe_out = CreateNamedPipeA(
         "\\\\.\\pipe\\xpserial",
         PIPE_ACCESS_DUPLEX,
@@ -19,6 +20,7 @@ void KernelDebugger::com1_init_pipe() {
         1, 4096, 4096, 0, NULL);
     pipe_in = pipe_out;
     ConnectNamedPipe(pipe_out, NULL);
+    callbac = callback;
 }
 
 void KernelDebugger::pipe_poll_rx() {
@@ -29,6 +31,9 @@ void KernelDebugger::pipe_poll_rx() {
     if (avail > 0) {
         DWORD read = 0;
         ReadFile(pipe_in, &rx_buf, 1, &read, NULL);
-        if (read == 1) rx_ready = true;
+        if (read == 1) { 
+            rx_ready = true; 
+            //callbac(0xd1);
+        }
     }
 }
