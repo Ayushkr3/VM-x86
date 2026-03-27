@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <string>
+#include "memory.h"
 #define FW_CFG_SIGNATURE    0x0000  // returns "QEMU"
 #define FW_CFG_ID           0x0001
 #define FW_CFG_UUID         0x0002
@@ -40,7 +41,6 @@ struct FWCfg {
         map.push_back({ 0x00000000, 0x0009F000, 1 }); // RAM 0-640KB
         map.push_back({ 0x0009F000, 0x00001000, 2 }); // RESERVED EBDA
         map.push_back({ 0x000F0000, 0x00010000, 2 }); // RESERVED BIOS ROM
-
         // main RAM above 1MB up to ram_size
         // but skip 0xA0000-0xF0000 (VGA/ISA hole) already excluded above
         if (ram_size > 0x00100000) {
@@ -96,7 +96,7 @@ struct FWCfg {
 
         // bootorder
         std::string bootorder =
-            "/pci@i0cf8/*@2/drive@0/disk@1\n"   // CD-ROM (ata1-0)
+            "/pci@i0cf8/*@2/drive@1/disk@0\n"   // CD-ROM (ata1-0)
             "/pci@i0cf8/*@2/drive@0/disk@0\n";  // HD (ata0-0)
         addFile("bootorder",
             std::vector<uint8_t>(bootorder.begin(), bootorder.end()));

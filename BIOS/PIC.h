@@ -3,7 +3,14 @@
 #include <cstdint>
 #include <atomic>
 #include "APIC.h"
-typedef void (*RaiseIRQ_f)(int vector);
+
+struct P_INTERRUPT_TYPE {
+    short irqN = -1;
+    bool isIOAPIC = false;
+    short APIC_ID = -1;
+    //short TypeMode;
+};
+typedef void (*RaiseIRQ_f)(P_INTERRUPT_TYPE intT);
 class PICState {
     static RaiseIRQ_f raiseInt_fwd;
 public:
@@ -27,5 +34,7 @@ public:
     void ReleaseTimerLock();
     int GetVectorFromIRQ(int irqN);
     static void Init(RaiseIRQ_f rfwd);
+    static std::atomic<int> nonTimerInt;
+    static std::atomic<bool> rtc_irq_pending;
 };
 extern PICState pic;

@@ -2,11 +2,11 @@
 #include "Global.h"
 #include <vector>
 #include "IDE_controller.h"
+#include "vga.h"
 #include "PCI_def.h"
 // ---------------------------------------------------------------------------
 // HostBridge  (8086:1237)
 // ---------------------------------------------------------------------------
-extern bool tester;
 class HostBridge : public PCIDevice {
 public:
     HostBridge() {
@@ -39,7 +39,36 @@ public:
     }
     void config_write(uint32_t offset, uint32_t value);
 };
+class VGAController :public PCIDevice {
+    bool rom_bar_sizing_probe = false;
+public:
+    ScreenAdapter* sc;
+    VGAScreen* vga;
+    VGAController() {
+        memset(config, 0, sizeof(config));
 
+        *(uint16_t*)&config[0x00] = 0x1234;
+        *(uint16_t*)&config[0x02] = 0x1111;
+        *(uint16_t*)&config[0x04] = 0x0003;
+        config[0x09] = 0x00;
+        config[0x0A] = 0x00;
+        config[0x0B] = 0x03;
+        config[0x0E] = 0x00;
+        *(uint16_t*)&config[0x2C] = 0x1AF4;
+        *(uint16_t*)&config[0x2E] = 0x1100;
+        config[0x3C] = 0xFF;
+        config[0x3D] = 0x00;
+        *(uint32_t*)&config[0x30] = VGABIOS_BASE & 0xFFFFF800;
+        rom_bar_size = VGABIOS_SIZE; // 64KB
+
+        set_bar(0, VGA_LFB_ADDRESS | 0x08, 0x1000000);
+
+        sc = new ScreenAdapter;
+        vga = new VGAScreen(sc, SVGA_SIZE);
+    }
+    void config_write(uint32_t offset, uint32_t value);
+    uint32_t config_read(uint32_t offset);
+};
 // ---------------------------------------------------------------------------
 // PCISystemBus
 // ---------------------------------------------------------------------------
@@ -50,6 +79,7 @@ public:
     HostBridge    HB;
     ISABridge     SB;
     IDEController* ID=nullptr;
+    VGAController* vgaC = nullptr;
 
     uint32_t index = 0;
 

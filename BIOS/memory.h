@@ -11,11 +11,14 @@ static const uint64_t LAPIC_BASE = 0xFEE00000;
 static const uint64_t LAPIC_SIZE = 0x00001000;
 static const uint64_t IOAPIC_BASE = 0xFEC00000;
 static const uint64_t IOAPIC_SIZE = 0x00001000;
-//static const uint64_t BIOS_BASE = 0xFFFF0000;
-//static const uint64_t BIOS_SIZE = 0x20000;
+static const uint64_t SVGA_BASE = 0xE0000000;
+static const uint64_t SVGA_SIZE = 0x1000000;
 
+static const uint64_t VGABIOS_BASE = 0xFEB00000;
+static const uint64_t VGABIOS_SIZE = 0x10000;
 
 extern char* RAM;
-//extern char* BIOS;
+extern char* SVGA;
+extern char* VGA_ROM;
 void InitMemory();
 void DeinitMemory();

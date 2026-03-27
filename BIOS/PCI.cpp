@@ -1,9 +1,7 @@
-﻿
-#include "PCI.h"
+﻿#include "PCI.h"
 #include <cstdio>
 #include <cstring>
 #include <queue>
-bool tester = false;
 // ============================================================================
 // MINIMAL SETUP - Just constructor
 // ============================================================================
@@ -22,17 +20,45 @@ void ISABridge::config_write(uint32_t offset, uint32_t value) {
     if ((offset >= 0x10 && offset <= 0x24) || offset == 0x30) return;
     PCIDevice::config_write(offset, value);
 }
+uint32_t VGAController::config_read(uint32_t offset) {
+    if (offset == 0x30) {
+        if (rom_bar_sizing_probe) {
+            rom_bar_sizing_probe = false;
+            return (~(VGABIOS_SIZE - 1)) | 0x1;  // 0xFFFF0001
+        }
+        // Always return locked address + enable bit
+        return (VGABIOS_BASE & 0xFFFFF800) | 0x1;
+    }
+    return PCIDevice::config_read(offset);
+}
 
+void VGAController::config_write(uint32_t offset, uint32_t value) {
+    if (offset == 0x30) {
+        // Catch both 0xFFFFFFFF and 0xFFFFFF00 style sizing probes
+        if ((value & 0xFFFFF800) >= 0xFFFF0000) {
+            rom_bar_sizing_probe = true;
+            return;
+        }
+        // Ignore any attempt to change the address, keep it locked
+        *(uint32_t*)&config[0x30] = (VGABIOS_BASE & 0xFFFFF800) | 0x1;
+        return;
+    }
+    if (offset >= 0x18 && offset <= 0x24) return;
+    PCIDevice::config_write(offset, value);
+}
 // ============================================================================
 // OUT HOOK - Handle all writes
 // ============================================================================
 void PCISystemBus::out_hook(uint32_t port, uint32_t value, int size) {
+    uint16_t offset = 0xffff;
+    IDEChannel* channel = nullptr;
+    IDEInterface* dev = nullptr;
     // PCI CONFIG
     if (port == 0xCF8) {
         index = value;
         return;
     }
-    if (port >= 0xCFC && port <= 0xCFF) {
+    else if (port >= 0xCFC && port <= 0xCFF) {
         if (!(index & 0x80000000)) return;
         uint8_t bus = (index >> 16) & 0xFF;
         uint8_t dev = (index >> 11) & 0x1F;
@@ -46,9 +72,6 @@ void PCISystemBus::out_hook(uint32_t port, uint32_t value, int size) {
         attachedDevice[dev]->config_write(reg, merged);
         return;
     }
-    uint16_t offset = 0xffff;
-    IDEChannel* channel = nullptr;
-    IDEInterface* dev = nullptr;
     if (port >= 0x1F0 && port <= 0x1F7) {
         if (!ID->primary)return;
         offset = port - 0x1F0;
@@ -56,24 +79,27 @@ void PCISystemBus::out_hook(uint32_t port, uint32_t value, int size) {
         dev = channel->current_interface;
         if (dev)goto IDE_COMMAND;
     }
-    if (port >= 0x170 && port <= 0x177) {
+    else if (port >= 0x170 && port <= 0x177) {
         if (!ID->secondary)return;
         offset = port - 0x170;
         channel = ID->secondary;
         dev = channel->current_interface;
         if (dev)goto IDE_COMMAND;
     }
-    if (port == 0x3F6) {
+    else if (port == 0x3F6) {
         if (!ID->primary)return;
         channel = ID->primary;
         channel->writeControl(value);
     }
-    if (port == 0x376) {
+    else if (port == 0x376) {
         if (!ID->secondary)return;
         channel = ID->secondary;
         channel->writeControl(value);
     }
-
+    else if (port >= 0x3C0 && port <= 0x3DA) {
+        offset = port - 0x3C0;
+        goto VGA_COMMAND;
+    }
     return;
 IDE_COMMAND:
         switch (offset) {
@@ -106,11 +132,30 @@ IDE_COMMAND:
             break;
         }
         return;
+VGA_COMMAND:
+        switch (offset) {
+        case 0x00: vgaC->vga->port3C0_write(value); break;
+        case 0x02: vgaC->vga->port3C2_write(value); break;
+        case 0x04: vgaC->vga->port3C4_write(value); break;
+        case 0x05: vgaC->vga->port3C5_write(value); break;
+        case 0x06: vgaC->vga->port3C6_write(value); break;
+        case 0x07: vgaC->vga->port3C7_write(value); break;
+        case 0x08: vgaC->vga->port3C8_write(value); break;
+        case 0x09: vgaC->vga->port3C9_write(value); break;
+        case 0x0E: vgaC->vga->port3CE_write(value); break;
+        case 0x0F: vgaC->vga->port3CF_write(value); break;
+        case 0x14: (size == 1) ? vgaC->vga->port3D4_write(value): vgaC->vga->port3D4_write16(value); break;
+        case 0x15: (size == 1) ? vgaC->vga->port3D5_write(value) : vgaC->vga->port3D5_write16(value); break;
+        }
+        return;
 }
 uint32_t PCISystemBus::in_hook(uint32_t port, int size) {
+    uint8_t offset = 0xff;
+    IDEInterface* dev;
+    IDEChannel* channel = nullptr;
     // PCI CONFIG
     if (port == 0xCF8) return index;
-    if (port >= 0xCFC && port <= 0xCFF) {
+    else if (port >= 0xCFC && port <= 0xCFF) {
         if (!(index & 0x80000000)) return 0xFFFFFFFF;
         uint8_t bus = (index >> 16) & 0xFF;
         uint8_t dev = (index >> 11) & 0x1F;
@@ -123,28 +168,31 @@ uint32_t PCISystemBus::in_hook(uint32_t port, int size) {
         if (size == 2) return (val >> (byteOff * 8)) & 0xFFFF;
         return val;
     }
-    uint8_t offset = 0xffff;
-    IDEInterface* dev;
-
-    if (port >= 0x1F0 && port <= 0x1F7) {
+    else if (port >= 0x1F0 && port <= 0x1F7) {
         if (!ID->primary)return 0;
         offset = port - 0x1F0;
+        channel = ID->primary;
         dev = ID->primary->current_interface;
         if (dev)goto IDE_COMMAND;
     }
-    if (port == 0x3F6) {
+    else if (port == 0x3F6) {
         if (!ID->primary)return 0;
         return ID->primary->readStatus();
     }
-    if (port == 0x376) {
+    else if (port == 0x376) {
         if (!ID->secondary)return 0;
         return ID->secondary->readStatus();
     }
-    if (port >= 0x170 && port <= 0x177) {
+    else if (port >= 0x170 && port <= 0x177) {
         if (!ID->secondary)return 0;
         offset = port - 0x170;
+        channel = ID->secondary;
         dev = ID->secondary->current_interface;
         if (dev)goto IDE_COMMAND;
+    }
+    else if (port >= 0x3C0 && port <= 0x3DA) {
+        offset = port - 0x3C0;
+        goto VGA_COMMAND;
     }
     return 0xFF;
 
@@ -158,9 +206,28 @@ IDE_COMMAND:
     case 0x05: return dev->lba_high_reg;          // LBA Hih
     case 0x06: return dev->device_reg;            // Device
     case 0x07: {
-        uint64_t ret  = (dev->drive_connected) ? dev->status_reg : 0;
+        uint32_t ret = (dev->drive_connected) ? dev->status_reg : 0;
+        channel->LowerIRQ();
         return ret;
     }
+    }
+    return 0xFF;
+VGA_COMMAND:
+    switch (offset) {
+    case 0x00: return (size==1) ? vgaC->vga->port3C0_read(): vgaC->vga->port3C0_read16();
+    case 0x01: return vgaC->vga->port3C1_read();
+    case 0x04: return vgaC->vga->port3C4_read();
+    case 0x05: return vgaC->vga->port3C5_read();
+    case 0x06: return vgaC->vga->port3C6_read();
+    case 0x07: return vgaC->vga->port3C7_read();
+    case 0x08: return vgaC->vga->port3C8_read();
+    case 0x09: return vgaC->vga->port3C9_read();
+    case 0x0C: return vgaC->vga->port3CC_read();
+    case 0x0E: return vgaC->vga->port3CE_read();
+    case 0x0F: return vgaC->vga->port3CF_read();
+    case 0x14: return vgaC->vga->port3D4_read();
+    case 0x15: return (size==1) ? vgaC->vga->port3D5_read() : vgaC->vga->port3D5_read16();
+    case 0x1A: return vgaC->vga->port3DA_read();
     }
     return 0xFF;
 }

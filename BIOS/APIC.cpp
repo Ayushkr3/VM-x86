@@ -118,7 +118,6 @@ static void ioapic_write_reg(IOAPICState* s, uint8_t reg, uint32_t val,LAPICStat
             printf("[IOAPIC] Redir write out of range pin=%u\n", pin);
             return;
         }
-
         if (hi) {
             s->redir[pin].high = val & 0xFF000000u;
         }
@@ -130,7 +129,7 @@ static void ioapic_write_reg(IOAPICState* s, uint8_t reg, uint32_t val,LAPICStat
 
         // Log when low word is written (entry is now complete/updated).
         if (!hi) {
-            s->redir->pin_nums = pin;
+            s->redir[pin].pin_nums = pin;
             printf("[IOAPIC] pin=%2u vec=0x%02x dest=0x%02x delmode=%u "
                 "trigger=%s polarity=%s destmode=%s %s\n",
                 pin,

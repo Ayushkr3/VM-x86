@@ -38,10 +38,25 @@ void Poll() {
             else if (event.type == SDL_EVENT_KEY_DOWN) {
                 SDL_Keycode code = event.key.key;
                 if (code == SDLK_S) {
-                    //running = false;
-                    //hypervisior->StopVP();
-                    tester = true;
-                    WHPX::ThunkRaiseInterrupt(0xb2);
+                    
+                }
+                else if(code==SDLK_A){
+                    kbd->send_scancode(Scancode1::F2);
+                }
+                else if (code == SDLK_E) {
+                    hypervisior->StopVP();
+                }
+                else if (code == SDLK_Q) {
+                    kbd->send_scancode((Scancode1::ENTER));  // break
+                }
+            }
+            else if (event.type == SDL_EVENT_KEY_UP) {
+                SDL_Keycode code = event.key.key;
+                if (code == SDLK_A) {
+                    kbd->send_scancode(Scancode1::BREAK(Scancode1::F6));  // break
+                }
+                else if (code == SDLK_Q) {
+                    kbd->send_scancode(Scancode1::BREAK(Scancode1::ENTER));  // break
                 }
             }
         }
@@ -52,14 +67,16 @@ void EmulationLoop() {
 }
 int main(int argc, char* argv[]) {
     const char* bios_path = "D:/windows nt/bios_d.bin";
+    const char* vgabios_path = "D:/windows nt/vgabios.bin";
     std::string isopath = "D:/windows nt/windows xp32_d.iso";
     auto bios = load_bios(bios_path);
+    auto vgabios = load_bios(vgabios_path);
     fw_cfg.init(RAM_SIZE);
     InitMemory();
     InitIO(&pci,WHPX::ThunkRaiseInterrupt,isopath);
     size_t offset = BIOS_SIZE - bios.size();
     memcpy((char*)RAM +BIOS_BASE+offset, bios.data(), bios.size());
-    
+    memcpy((char*)VGA_ROM, vgabios.data(), vgabios.size());
     UD ud;
     ud.pic = &pic;
     ud.sb = &pci;

@@ -5,18 +5,22 @@
 PICState pic;
 RaiseIRQ_f PICState::raiseInt_fwd;
 using namespace std::chrono;
+std::atomic<int> PICState::nonTimerInt = -1;
+
+std::atomic<bool> PICState::rtc_irq_pending;
+
 void PICState::Init(RaiseIRQ_f rfwd) {
     raiseInt_fwd = rfwd;
 }
-static int nonTimerInt=-1;
 void PICState::RaiseIRQ(int irqN)
 {
     //if we get disk or any other irq we should priortize that instead of time
+    P_INTERRUPT_TYPE intT;
     auto lock = [&]()->bool {
         if (irqN != 0 && irqN != 0x8) {
             //Non timer interrupts
             TimerLock.store(true);
-            nonTimerInt = irqN;
+            nonTimerInt.store(irqN);
             return false;
         }
         else {
@@ -24,6 +28,7 @@ void PICState::RaiseIRQ(int irqN)
             if (TimerLock.load()) {
                 return true;
             }
+            return false;
         }
     };
     IOREDEntry pin = ioapic.redir[irqN];
@@ -33,7 +38,10 @@ void PICState::RaiseIRQ(int irqN)
         if (lock()) {
             return;
         }
-        raiseInt_fwd(irqN);
+        intT.irqN = irqN;
+        intT.isIOAPIC = true;
+        intT.APIC_ID = (pin.high >> 24) & 0xFFu,
+        raiseInt_fwd(intT);
     }
     if (irqN < 8)
     {
@@ -42,7 +50,9 @@ void PICState::RaiseIRQ(int irqN)
             if (lock()) {
                 return;
             }
-            raiseInt_fwd(irqN);
+            intT.irqN = irqN;
+            intT.isIOAPIC = false;
+            raiseInt_fwd(intT);
         }
     }
     else
@@ -53,24 +63,32 @@ void PICState::RaiseIRQ(int irqN)
             if (lock()) {
                 return;
             }
-            raiseInt_fwd(irqN);
+            intT.irqN = irqN;
+            intT.isIOAPIC = false;
+            raiseInt_fwd(intT);
         }
     }
     return;
 }
 void PICState::ReleaseTimerLock() {
-    if (nonTimerInt !=-1&&nonTimerInt!=0&& nonTimerInt!=8) {
+    if (nonTimerInt != -1) {
         TimerLock.store(false);
         nonTimerInt = -1;
     }
 }
+
 int PICState::GetVectorFromIRQ(int irqN) {
     IOREDEntry pin = ioapic.redir[irqN];
     bool mask = (pin.low & LVT_MASK_BIT);
     if (!mask) {
-        //irq 0 and 8
-        uint32_t vector = pin.low & 0xFFu;
-        return vector;
+        uint32_t vector = pin.low & 0xFF;
+         if (irqN == 0x8) {
+                if (rtc_irq_pending.load()&&TimerLock.load()) {
+                    return -1;
+                }
+           rtc_irq_pending.store(true);
+         }
+         return vector;
     }
     if (irqN < 8)
     {
@@ -96,5 +114,5 @@ int PICState::GetVectorFromIRQ(int irqN) {
             return -1;
         }
     }
-    
+
 }

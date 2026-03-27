@@ -3,34 +3,49 @@ short whCPUctx::VPcount = 0;
 WHV_PARTITION_HANDLE whCPUctx::Partition;
 void* WHPX::currentCtx = nullptr;
 
-static int requestedIRQ=-1;
-void WHPX::RaiseInterrupt(int intN) {
+static std::atomic<int> requestedIRQ{ -1 };
+void WHPX::RaiseInterrupt(P_INTERRUPT_TYPE interr) {
+    //This function have to bashed again and again if it is comming from PIC
+    if (interr.isIOAPIC) {
+        WHV_INTERRUPT_CONTROL ctrl = {};
+        ctrl.Destination = interr.APIC_ID;
+        ctrl.DestinationMode = WHvX64InterruptDestinationModeLogical;
+        ctrl.TriggerMode = WHvX64InterruptTriggerModeEdge;
+        ctrl.Type = WHvX64InterruptTypeFixed;
+        int vec = pic.GetVectorFromIRQ(interr.irqN);
+        if (vec == -1)return;
+        ctrl.Vector = vec;
+        ok(WHvRequestInterrupt(partition,&ctrl,sizeof(ctrl)));
+        pic.ReleaseTimerLock();
+        return;
+    }
     WHV_REGISTER_NAME n = WHvX64RegisterDeliverabilityNotifications;
-    WHV_REGISTER_VALUE v = {};
+    WHV_REGISTER_VALUE v = {};    
     v.DeliverabilityNotifications.InterruptNotification = 1;
     ok(WHvSetVirtualProcessorRegisters(partition, 0, &n, 1, &v));
-    requestedIRQ = intN;
+    requestedIRQ.store(interr.irqN);
 }
 
-void WHPX::UnitTest(int intN) {
-    WHV_REGISTER_NAME n = WHvRegisterPendingEvent;
+void WHPX::InterruptWindow(int irqN) {
+    // check shadow
+    WHV_REGISTER_NAME n = WHvRegisterInterruptState;
     WHV_REGISTER_VALUE v = {};
-    HRESULT hx=0;
-    n = WHvRegisterInterruptState;
-    v = {};
     ok(WHvGetVirtualProcessorRegisters(partition, 0, &n, 1, &v));
-    if (v.InterruptState.InterruptShadow)return;
-    n = WHvRegisterPendingEvent;
+    if (v.InterruptState.InterruptShadow) {
+        return;
+    }
+    int vec = pic.GetVectorFromIRQ(irqN);
     v = {};
     v.ExtIntEvent.EventPending = 1;
-    v.ExtIntEvent.EventType = WHvX64PendingEventExtInt;
-    //TODO: Need to check validity of interrupt before devlivering
-    int vec = pic.GetVectorFromIRQ(intN);
-    if (vec != -1) {
-        v.ExtIntEvent.Vector = vec;
-        ok(WHvSetVirtualProcessorRegisters(partition, 0, &n, 1, &v));
+    v.ExtIntEvent.Vector = vec;
+    if (vec == -1) {
         pic.ReleaseTimerLock();
+        return;
     }
+    n = WHvRegisterPendingEvent;
+    v.ExtIntEvent.EventType = WHV_X64_PENDING_EVENT_TYPE::WHvX64PendingEventExtInt;
+    ok(WHvSetVirtualProcessorRegisters(partition, 0, &n, 1, &v));
+    pic.ReleaseTimerLock();
 }
 void WHPX::RunVP() {
     
@@ -42,7 +57,7 @@ void WHPX::RunVP() {
         switch (exit_ctx.ExitReason)
         {
         case WHV_RUN_VP_EXIT_REASON::WHvRunVpExitReasonX64IoPortAccess: {
-            //Slow as balls but will not be called frequently hopefully
+            //This will be slow but will ensure correctness
             WHV_EMULATOR_STATUS emuS;
             ok(WHvEmulatorTryIoEmulation(emuH, this, &exit_ctx.VpContext, &exit_ctx.IoPortAccess,&emuS));
             if (!emuS.EmulationSuccessful) {
@@ -51,7 +66,7 @@ void WHPX::RunVP() {
             break;
         }
         case WHvRunVpExitReasonX64InterruptWindow: {
-            UnitTest(requestedIRQ);
+            InterruptWindow(requestedIRQ.load());
             break;
         }
         case WHvRunVpExitReasonMemoryAccess: {
@@ -82,7 +97,7 @@ void WHPX::RunVP() {
             break;
         }
         default:
-            WHV_REGISTER_NAME names = WHvRegisterInternalActivityState;
+            WHV_REGISTER_NAME names = WHvX64RegisterDeliverabilityNotifications;
             WHV_REGISTER_VALUE vals;
             WHvGetVirtualProcessorRegisters(partition, 0, &names, 1, &vals);
             PRINT_HEX(exit_ctx.VpContext.Cs.Base);
@@ -102,11 +117,11 @@ void WHPX::ThunkGVAtoGPA(void* ctx, WHV_GUEST_VIRTUAL_ADDRESS va, WHV_GUEST_PHYS
     WHPX* c = (WHPX*)ctx;
     c->GVAtoGPA(va, pa);
 }
-void WHPX::ThunkRaiseInterrupt(int intN) {
+void WHPX::ThunkRaiseInterrupt(P_INTERRUPT_TYPE interr) {
     if (WHPX::currentCtx == nullptr)
         throw "Undefined";
     WHPX* c = (WHPX*)WHPX::currentCtx;
-    c->RaiseInterrupt(intN);
+    c->RaiseInterrupt(interr);
 }
 
 void WHPX::StopVP() {
@@ -193,7 +208,11 @@ WHPX::WHPX(void* user_data_in_out) {
 
     WHV_MAP_GPA_RANGE_FLAGS flags = WHV_MAP_GPA_RANGE_FLAGS::WHvMapGpaRangeFlagExecute | WHV_MAP_GPA_RANGE_FLAGS::WHvMapGpaRangeFlagRead | WHV_MAP_GPA_RANGE_FLAGS::WHvMapGpaRangeFlagWrite;
     ok(WHvMapGpaRange(partition, RAM, 0, RAM_SIZE, flags));
-
+    //wtf
+    flags = WHV_MAP_GPA_RANGE_FLAGS::WHvMapGpaRangeFlagRead | WHV_MAP_GPA_RANGE_FLAGS::WHvMapGpaRangeFlagWrite;
+    ok(WHvMapGpaRange(partition, SVGA, SVGA_BASE, SVGA_SIZE,flags));
+    flags = WHV_MAP_GPA_RANGE_FLAGS::WHvMapGpaRangeFlagExecute | WHV_MAP_GPA_RANGE_FLAGS::WHvMapGpaRangeFlagRead | WHV_MAP_GPA_RANGE_FLAGS::WHvMapGpaRangeFlagWrite;
+    ok(WHvMapGpaRange(partition, VGA_ROM, VGABIOS_BASE, VGABIOS_SIZE, flags));
     cpuctx = new whCPUctx(partition);
 
     UD* ux = (UD*)user_data_in_out;

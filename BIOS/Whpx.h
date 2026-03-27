@@ -76,12 +76,12 @@ public:
 	void RunVP();
 	void StopVP();
 	void GVAtoGPA(WHV_GUEST_VIRTUAL_ADDRESS va,WHV_GUEST_PHYSICAL_ADDRESS* pa);
-	void RaiseInterrupt(int intN);
+	void RaiseInterrupt(P_INTERRUPT_TYPE interr);
 	void EnableStepMode();
 	void BumpRIP(WHV_RUN_VP_EXIT_CONTEXT* exit_ctx);
-	void UnitTest(int intN);
+	void InterruptWindow(int irqN);
 	static void ThunkGVAtoGPA(void* ctx	,WHV_GUEST_VIRTUAL_ADDRESS va, WHV_GUEST_PHYSICAL_ADDRESS* pa);
-	static void ThunkRaiseInterrupt(int intN);
+	static void ThunkRaiseInterrupt(P_INTERRUPT_TYPE interr);
 
 	//WinHvEmulator apis
 private:

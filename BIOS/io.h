@@ -9,6 +9,7 @@
 #include "kd.h"
 #include "fw_cfg.h"
 #include "timer.h"
+#include "Keyboard.h"
 extern FWCfg fw_cfg;
 extern IO ports;
 typedef uint32_t (*GetEflagsFWD)(void);
@@ -24,6 +25,8 @@ struct UD {
 	PICState* pic;
 	void* whpxCtx;
 };
+extern PS2Keyboard* kbd;
+
 uint32_t hook_in(uint16_t port, int size, void* user_data);
 void hook_out(uint16_t port, int size, uint32_t value, void* user_data);
 void hook_wrmsr(uint32_t index,uint32_t rax,uint32_t rdx);

@@ -7,7 +7,6 @@
 // Forward declaration helper functions
 static std::unordered_map<uint8_t, const char*> createAtaCmdNameMap();
 static std::unordered_map<uint8_t, ATAPICommandInfo> createAtapiCmdMap();
-static std::queue<int> irqRaised;
 
 
 static const std::unordered_map<uint8_t, const char*> ATA_CMD_NAME =
@@ -577,35 +576,31 @@ void IDEInterface::ataCommand(uint8_t cmd) {
             break;
         }
         if (is_atapi) {
-            // status_reg = ATA_SR_DRDY | ATA_SR_ERR| ATA_SR_DSC;
             lba_mid_reg = ATAPI_SIGNATURE_LO;
             lba_high_reg = ATAPI_SIGNATURE_HI;
-            error_reg = ATA_ER_ABRT;
             ataBortCommand();
             break;
         }
-        createIdentifyPacket();
-        status_reg = ATA_SR_DRDY| ATA_SR_DRQ;
-        pushIrq();
+        else {
+            createIdentifyPacket();
+            status_reg = ATA_SR_DRDY | ATA_SR_DRQ| ATA_SR_DSC;
+            pushIrq();
+        }
         break;
     case ATA_CMD_IDENTIFY_PACKET_DEVICE:
         if (!drive_connected) {
             status_reg = 0x00;
             return;
         }
-        if (!is_atapi) {
-            sector_count_reg = 0x00;
-            lba_low_reg = 0x01;
-            lba_mid_reg = 0x00;
-            lba_high_reg = 0x00;
-            status_reg = ATA_SR_DRDY | ATA_SR_ERR;
-            error_reg = ATA_ER_ABRT;
+        if (is_atapi) {
+            createIdentifyPacket();
+            status_reg = ATA_SR_DRDY | ATA_SR_DRQ | ATA_SR_DSC;
+            sector_count_reg = 1;
             pushIrq();
-            break;
         }
-        createIdentifyPacket();
-        status_reg = ATA_SR_DRDY | ATA_SR_DRQ| ATA_SR_DSC;
-        pushIrq();
+        else {
+            ataBortCommand();
+        }
         break;
     case ATA_CMD_PACKET:
         if (is_atapi) {
@@ -617,6 +612,31 @@ void IDEInterface::ataCommand(uint8_t cmd) {
         else {
             ataBortCommand();
         }
+        break;
+    case ATA_CMD_SET_FEATURES:
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC;
+        pushIrq();
+        break;
+    case ATA_CMD_FLUSH_CACHE:
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC;
+        pushIrq();
+        break;
+
+    case ATA_CMD_FLUSH_CACHE_EXT:
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC;
+        pushIrq();
+        break;
+    case ATA_CMD_INITIALIZE_DEVICE_PARAMETERS:
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC;
+        pushIrq();
+        break;
+    case ATA_CMD_IDLE_IMMEDIATE:
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC;
+        pushIrq();
+        break;
+    case ATA_CMD_SECURITY_FREEZE_LOCK:
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC;
+        pushIrq();
         break;
     default:
         std::cout << "Unknown ATA command" << std::hex << cmd<<std::endl;
@@ -695,6 +715,9 @@ void IDEInterface::doAtaWriteSectorsDma() {
 }
 
 void IDEInterface::atapiHandle() {
+    uint8_t cmd_packet[12];
+    std::copy(data.begin(), data.begin() + 12, cmd_packet);
+
     uint8_t cmd = data[0];
     auto it = ATAPI_CMD.find(cmd);
     const char* cmd_name = it != ATAPI_CMD.end() ? it->second.name : "<undefined>";
@@ -741,10 +764,170 @@ void IDEInterface::atapiHandle() {
     case ATAPI_CMD_READ_10:
     case ATAPI_CMD_READ_12:
         atapiRead(data);
-        
+        break;
+    case ATAPI_CMD_REQUEST_SENSE:
+        dataAllocate(data[4]);
+        data_end = data_length;
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
+        data[0] = 0x80 | 0x70;
+        data[2] = atapi_sense_key;
+        data[7] = 8;
+        data[12] = atapi_add_sense;
+        atapi_sense_key = 0;
+        atapi_add_sense = 0;
+        break;
+    case ATAPI_CMD_INQUIRY: {
+        // cmd_packet[4] is the allocation length requested by host
+        int length = cmd_packet[4];
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
+        // Allocate fresh buffer (preserves 64KB backing store via resize-only growth)
+        // then fill — never shrink the vector with an assignment literal
+        static const uint8_t inquiry_data[36] = {
+            // 0: Device-type, Removable, ANSI-Version, Response Format
+            0x05, 0x80, 0x01, 0x31,
+            // 4: Additional length, Reserved, Reserved, Reserved
+            31, 0, 0, 0,
+            // 8: Vendor Identification "SONY    "
+            0x53, 0x4F, 0x4E, 0x59,
+            0x20, 0x20, 0x20, 0x20,
+            // 16: Product Identification "CD-ROM CDU-1000 "
+            0x43, 0x44, 0x2D, 0x52,
+            0x4F, 0x4D, 0x20, 0x43,
+            0x44, 0x55, 0x2D, 0x31,
+            0x30, 0x30, 0x30, 0x20,
+            // 32: Product Revision Level "1.1a"
+            0x31, 0x2E, 0x31, 0x61,
+        };
+        uint32_t response_length = (uint32_t)min(36, length);
+        dataAllocate(response_length);
+        std::copy(inquiry_data, inquiry_data + response_length, data.begin());
+        data_end = data_length;
+        break;
+    }
+    case ATAPI_CMD_MODE_SENSE_6:
+        dataAllocate(data[4]);
+        data_end = data_length;
         status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
         break;
+    case ATAPI_CMD_PREVENT_ALLOW_MEDIUM_REMOVAL:
+        dataAllocate(0);
+        data_end = data_length;
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC;
+        break;
+    case ATAPI_CMD_MODE_SENSE_10: {
+        uint64_t length = data[8] | data[7] << 8;
+        uint64_t page_code = data[2];
+        if (page_code == 0x2A)
+        {
+            dataAllocate(min(30, length));
+        }
+        data_end = data_length;
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
+        break;
+    }
+    case ATAPI_CMD_GET_CONFIGURATION: {
+        int length = min(data[8] | data[7] << 8, 32);
+        dataAllocate(length);
+        data_end = data_length;
+        data[0] = length - 4 >> 24 & 0xFF;
+        data[1] = length - 4 >> 16 & 0xFF;
+        data[2] = length - 4 >> 8 & 0xFF;
+        data[3] = length - 4 & 0xFF;
+        data[6] = 0x08;
+        data[10] = 3;
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
+        break;
+    }
+    case ATAPI_CMD_READ_CD:
+        dataAllocate(0);
+        data_end = data_length;
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC;
+        break;
+    case ATAPI_CMD_GET_EVENT_STATUS_NOTIFICATION:
+        atapiCheckConditionResponse(ATAPI_SK_ILLEGAL_REQUEST, ATAPI_ASC_INV_FIELD_IN_CMD_PACKET);
+        break;
+    case ATAPI_CMD_READ_TOC_PMA_ATIP: {
+        // Note: Big Endian 16-bit length field, bytes 7-8 of command packet
+        uint32_t length = (uint32_t)(cmd_packet[7] << 8) | cmd_packet[8];
+        // Format field is upper 2 bits of byte 9
+        uint8_t format = cmd_packet[9] >> 6;
+
+        dataAllocate(length);       // zeroes buffer, sets data_length = length
+        data_end = data_length;
+
+        if (format == 0)
+        {
+            // Format 0: Return TOC data
+            // Response contains two track descriptors:
+            //   - Track 1 (data track, ADR/Control=0x14)
+            //   - Track 0xAA (lead-out track, ADR/Control=0x16) with LBA = sector_count
+            uint32_t sc = sector_count;
+            static const uint8_t toc_header[] = {
+                0, 18,          // TOC data length (18 bytes follow)
+                1,              // first track number in TOC
+                1,              // last track number in TOC
+            };
+            // Track descriptor for track 1
+            static const uint8_t track1_descriptor[] = {
+                0,              // reserved
+                0x14,           // ADR=1 (Q subchannel), Control=4 (data track)
+                1,              // track number
+                0,              // reserved
+                0, 0, 0, 0,     // track start LBA = 0
+            };
+            // Track descriptor for lead-out (track 0xAA)
+            uint8_t leadout_descriptor[] = {
+                0,              // reserved
+                0x16,           // ADR=1 (Q subchannel), Control=6 (data track, copy permitted)
+                0xAA,           // track number: lead-out
+                0,              // reserved
+                (uint8_t)(sc >> 24),
+                (uint8_t)(sc >> 16 & 0xFF),
+                (uint8_t)(sc >> 8 & 0xFF),
+                (uint8_t)(sc & 0xFF),
+            };
+
+            // Copy into data buffer only as far as allocated length allows
+            uint32_t pos = 0;
+            auto append = [&](const uint8_t* src, uint32_t n) {
+                uint32_t to_copy = min(n, length > pos ? length - pos : 0u);
+                std::copy(src, src + to_copy, data.begin() + pos);
+                pos += n;   // advance by full n so pos tracks "logical" position
+            };
+
+            append(toc_header, sizeof(toc_header));
+            append(track1_descriptor, sizeof(track1_descriptor));
+            append(leadout_descriptor, sizeof(leadout_descriptor));
+        }
+        else if (format == 1)
+        {
+            // Format 1: Return session info
+            // Single session disc, one complete session
+            static const uint8_t session_data[] = {
+                0, 10,          // TOC data length (10 bytes follow)
+                1,              // first complete session
+                1,              // last complete session
+                0, 0,           // reserved
+                0, 0,           // reserved
+                0, 0,           // reserved
+                0, 0,           // reserved
+            };
+            uint32_t to_copy = min((uint32_t)sizeof(session_data), length);
+            std::copy(session_data, session_data + to_copy, data.begin());
+        }
+        else
+        {
+            // Unsupported format — return CHECK CONDITION
+            atapiCheckConditionResponse(ATAPI_SK_ILLEGAL_REQUEST,
+                ATAPI_ASC_INV_FIELD_IN_CMD_PACKET);
+            break;
+        }
+
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
+        break;
+    }
     default:
+        std::cout << "Unknown ATAPI command" << std::hex << cmd << std::endl;
         atapiCheckConditionResponse(ATAPI_SK_ILLEGAL_REQUEST, ATAPI_ASC_INV_FIELD_IN_CMD_PACKET);
         break;
     }
@@ -1203,8 +1386,14 @@ void IDEChannel::dmaWriteCommand8(uint8_t value) {
 void IDEChannel::pushIrq() {
     if (!(device_control_reg & ATA_CR_NIEN)){
         dma_status |= 4;
-        pic.RaiseIRQ(irq);
+        if (!IRQRaised.load()) {
+            pic.RaiseIRQ(irq);
+            IRQRaised.store(true);
+        }
     }
+}
+void IDEChannel::LowerIRQ() {
+     IRQRaised.store(false);
 }
 
 std::vector<uint64_t> IDEChannel::getState() const {
@@ -1265,16 +1454,15 @@ IDEController::IDEController(
     PCIDevice::config[0xb] = 0x1;
     PCIDevice::config[0x9] = 0x0;
     if (has_primary) {
-        PCIDevice::config[0x10] = 0x1F0|1;  // BAR0
-        PCIDevice::config[0x14] = 0x3F6| 1;  // BAR1
+        set_bar(0, 0x1F0 | 0x1, 8);   // primary cmd, 8 bytes IO
+        set_bar(1, 0x3F4 | 0x1, 4);   // primary ctl, 4 bytes IO
     }
     if (has_secondary) {
-        PCIDevice::config[0x18] = 0x170|1;  // BAR2
-        PCIDevice::config[0x1c] = 0x376|1;  // BAR3
+        set_bar(2, 0x170 | 0x1, 8);   // secondary cmd, 8 bytes IO
+        set_bar(3, 0x374 | 0x1, 4);   // secondary ctl, 4 bytes IO
     }
-    PCIDevice::config[0x20] = 0x1;  // BAR4
-    PCIDevice::config[0x24] = 0x1;  // BAR5
-    PCIDevice::config[0x30] = 0x1;  // BAR6
+    PCIDevice::config[0x20] = 0x0;  // BAR4
+    PCIDevice::config[0x24] = 0x0;  // BAR5
 }
 
 std::vector<uint64_t> IDEController::getState() const {

@@ -17,7 +17,7 @@ using namespace std::chrono;
 bool Timers::rtc_period_enabled = false;
 uint32_t Timers::rtc_period = 50;
 
-uint8_t Timers::PICsmask[3] = { 0xff };
+uint8_t Timers::PICsmask[3] = { 0xff};
 
 PICState* Timers::picS = nullptr;
 IOAPICState* Timers::ioapicS= nullptr;
@@ -60,7 +60,7 @@ void Timers::TimerThread() {
             next_wake = min(next_wake, rtc_next);
 
         double sleep_sec = next_wake - now();
-        Sleep(10);
+        Sleep(64);
         if (sleep_sec > 0) {
             auto sleep_us = std::chrono::duration<double>(sleep_sec);
             std::this_thread::sleep_for(sleep_us);
@@ -68,9 +68,7 @@ void Timers::TimerThread() {
     }
 }
 void Timers::SelectIRQandRaiseInterrupt(int irqN) {
-    //Will handle all redir and masks both pic and ioapic
     picS->RaiseIRQ(irqN);
-    
 }
 void Timers::UpdateMasks(int mask, TIMER_MASK_TYPE type) {
     PICsmask[type] = mask;
@@ -93,7 +91,11 @@ uint32_t Timers::GetCMOSregB() {
     return 0x02;
 }
 uint32_t Timers::GetCMOSregC(){
-    //std::cout << "C reg" << std::endl;
+    if (picS->rtc_irq_pending.load()) {
+        picS->rtc_irq_pending.store(false);  // EOI
+        //std::cout << "EOI" << std::endl;
+        return 0xC0;  // IRQF + PF set
+    }
     return 0x00;
 }
 uint32_t Timers::GetCMOSregD(){
@@ -128,4 +130,5 @@ uint32_t Timers::ReturnCMOSData(int index) {
     case 0x09: return toBCD(tm_info.tm_year % 100); // year (2 digits)
     case 0x32: return toBCD((tm_info.tm_year + 1900) / 100); // century
     }
+    return 0;
 }

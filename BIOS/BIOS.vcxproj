@@ -156,6 +156,7 @@
     <ClCompile Include="PCI.cpp" />
     <ClCompile Include="PIC.cpp" />
     <ClCompile Include="timer.cpp" />
+    <ClCompile Include="vga.cpp" />
     <ClCompile Include="VM.cpp" />
     <ClCompile Include="Whpx.cpp" />
   </ItemGroup>
@@ -169,11 +170,13 @@
     <ClInclude Include="IDE_controller.h" />
     <ClInclude Include="io.h" />
     <ClInclude Include="kd.h" />
+    <ClInclude Include="Keyboard.h" />
     <ClInclude Include="memory.h" />
     <ClInclude Include="PCI.h" />
     <ClInclude Include="PCI_def.h" />
     <ClInclude Include="PIC.h" />
     <ClInclude Include="timer.h" />
+    <ClInclude Include="vga.h" />
     <ClInclude Include="Whpx.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

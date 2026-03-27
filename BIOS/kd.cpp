@@ -33,7 +33,7 @@ void KernelDebugger::pipe_poll_rx() {
         ReadFile(pipe_in, &rx_buf, 1, &read, NULL);
         if (read == 1) { 
             rx_ready = true; 
-            //callbac(0xd1);
+            //callbac(0x4);
         }
     }
 }

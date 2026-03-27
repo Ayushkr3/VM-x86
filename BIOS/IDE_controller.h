@@ -323,8 +323,9 @@ public:
     void dmaWriteCommand(uint32_t value);
     void dmaWriteCommand8(uint8_t value);
 
+    std::atomic<bool> IRQRaised = false;
     void pushIrq();
-
+    void LowerIRQ();
     // State management
     std::vector<uint64_t> getState() const;
     void setState(const std::vector<uint64_t>& state);

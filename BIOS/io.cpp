@@ -10,7 +10,6 @@ uint32_t A20 = 0;
 IO ports;
 FWCfg fw_cfg;
 //Forwarded declaration from VM.CPP to stop emulation
-
 //Forwarded declaration to get eflags (wether to deliver int or not)
 GetEflagsFWD GetEflags_fwd;
 void init_cmos() {
@@ -36,18 +35,18 @@ void init_cmos() {
     CMOS::cmos_data[0x38] = 0x00;  // No special boot flags
 }
 
-void InitIDE(PCISystemBus* sb,std::string isoPath) {
+void InitIDE(PCISystemBus* sb, std::string isoPath) {
     IDEDeviceConfig config[2][2] = {};
     //TODO: Delete this later
     std::fstream* iso = new std::fstream;
-    iso->open(isoPath,std::ios::in | std::ios::binary);
+    iso->open(isoPath, std::ios::in | std::ios::binary);
     std::fstream* hd = new std::fstream;
-    hd->open("D:\\windows nt\\disk0.diskX", std::ios::in | std::ios::out | std::ios::binary);
+    /*hd->open("D:\\windows nt\\disk0.diskX", std::ios::in | std::ios::out | std::ios::binary);
     config[0][0].buffer = hd;
     config[0][0].is_cdrom = false;
-    hd->seekg(0,std::ios::end);
-    config[0][0].buffer_size = hd->tellg();;
-    hd->seekg(std::ios::beg);
+    hd->seekg(0, std::ios::end);
+    config[0][0].buffer_size = hd->tellg();
+    hd->seekg(0, std::ios::beg);*/
 
     config[0][1].buffer = nullptr;
     config[0][1].is_cdrom = false;
@@ -57,15 +56,16 @@ void InitIDE(PCISystemBus* sb,std::string isoPath) {
     config[1][0].is_cdrom = false;
     config[1][0].buffer_size = 0;
 
-    config[0][1].buffer = iso;
-    config[0][1].is_cdrom = true;
+    config[1][0].buffer = iso;
+    config[1][0].is_cdrom = true;
     iso->seekg(0, std::ios::end);
-    config[0][1].buffer_size = iso->tellg();
+    config[1][0].buffer_size = iso->tellg();
     iso->seekg(0, std::ios::beg);
 
     sb->ID = new IDEController(config);
     sb->AttachDevice((PCIDevice*)(sb->ID));
 }
+PS2Keyboard* kbd;
 void InitIO(PCISystemBus* sb, RaiseIRQ_f rfwd, std::string isoPath) {
     PICState::Init(rfwd);
     Timers::Init();
@@ -73,13 +73,19 @@ void InitIO(PCISystemBus* sb, RaiseIRQ_f rfwd, std::string isoPath) {
     init_cmos();
     KernelDebugger::com1_init_pipe([]() {
         pic.RaiseIRQ(0x4);
-    });
+        });
+    kbd = new PS2Keyboard([rfwd](int irq) {
+        pic.RaiseIRQ(irq);
+        });
+
+    sb->vgaC = new VGAController;
+    sb->AttachDevice((PCIDevice*)sb->vgaC);
 }
 uint32_t hook_in(uint16_t port, int size, void* user_data) {
     UD* ud = (UD*)user_data;
     PICState* pic = (PICState*)ud->pic;
     PCISystemBus* sb = (PCISystemBus*)ud->sb;
-    uint32_t return_val;    
+    uint32_t return_val;
     switch (port) {
         // 8259 PIC
     case 0x20: return_val = pic->master_icw_state; break; // master PIC status
@@ -126,8 +132,6 @@ uint32_t hook_in(uint16_t port, int size, void* user_data) {
     case 0x80: return_val = 0x00; break;
 
         // PS/2 keyboard controller
-    case 0x60: return_val = 0x00; break;
-    case 0x64: return_val = 0x10; break; // input buffer empty
 
     // PCI config space
     case 0xCF8:
@@ -137,9 +141,16 @@ uint32_t hook_in(uint16_t port, int size, void* user_data) {
     case 0xCFF:
         return_val = sb->in_hook(port, size);
         break;
+        //VGA controller
     case 0x3C0: case 0x3C1: case 0x3C2: case 0x3C4:
     case 0x3C5: case 0x3CE: case 0x3CF: case 0x3D4:
-    case 0x3D5: case 0x3DA: return_val = 0x00; break;
+    case 0x3D5: case 0x3DA: case 0x3CC: case 0x3C6:return_val = sb->in_hook(port,size); break;
+        // Floppy controller ports
+    case 0x3F0: return_val = 0x00; break;  // floppy SRA
+    case 0x3F2: return_val = 0x00; break;  // floppy DOR
+    case 0x3F4: return_val = 0x80; break;  // floppy MSR: RQM=1 (ready), DIO=0, no transfer
+    case 0x3F5: return_val = 0x00; break;  // floppy data FIFO
+    case 0x3F7: return_val = 0x00; break;  // floppy DIR
 
     case 0x1F0:
     case 0x1F1:
@@ -217,6 +228,12 @@ uint32_t hook_in(uint16_t port, int size, void* user_data) {
     case 0x402:
         return_val = Timers::GetPMTimer();
         break;
+    case 0x60:
+        return_val = kbd->read_data();
+        break;
+    case 0x64:
+        return_val = kbd->read_status();
+        break;
     default:
         printf("[IN ] port=0x%04X size=%d\n", port, size);
         return_val = 0xff;
@@ -226,7 +243,7 @@ uint32_t hook_in(uint16_t port, int size, void* user_data) {
 void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
     UD* ud = (UD*)user_data;
     PICState* pic = (PICState*)ud->pic;
-    PCISystemBus* sb = (PCISystemBus*)ud->sb;    
+    PCISystemBus* sb = (PCISystemBus*)ud->sb;
     switch (port) {
         // POST codes
     case 0x80:
@@ -329,8 +346,6 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
         break;
     case 0x40: case 0x41: case 0x42: case 0x43:
         break;
-    case 0x60: case 0x64:
-        break;
     case 0xCF8:
         sb->out_hook(port, value, size);
         break;
@@ -340,9 +355,18 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
     case 0xCFF:
         sb->out_hook(port, value, size);
         break;
-    case 0x3C0: case 0x3C2: case 0x3C4: case 0x3C5:
-    case 0x3CE: case 0x3CF: case 0x3D4: case 0x3D5:
+        //VGA controller
+    case 0x3C0: case 0x3C2: case 0x3C4: case 0x3C5:case 0x3C9:
+    case 0x3CE: case 0x3CF: case 0x3D4: case 0x3D5:case 0x3C8:
+    case 0x3C6:
+        sb->out_hook(port, value, size);
         break;
+        // Floppy controller ports (silently ignore writes)
+    case 0x3F2: break;  // floppy DOR
+    case 0x3F4: break;  // floppy MSR (read-only, ignore writes)
+    case 0x3F5: break;  // floppy data FIFO
+    case 0x3F7: break;  // floppy CCR/DIR
+
     case 0x1F0:
     case 0x1F1:
     case 0x1F2:
@@ -410,13 +434,19 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
     case 0x2f8:
         printf("%c", value);
         break;
+    case 0x60:
+        kbd->write_data(value & 0xFF);
+        break;
+    case 0x64:
+        kbd->write_command(value & 0xFF);
+        break;
     default:
         printf("[OUT] port=0x%04X size=%d val=0x%X\n", port, size, value);
         break;
     }
 }
 
-void hook_mmio_in(uint64_t PA,uint8_t* Data,uint16_t size,void* user_data) {
+void hook_mmio_in(uint64_t PA, uint8_t* Data, uint16_t size, void* user_data) {
     uint64_t offset = 0;
     if (PA >= IOAPIC_BASE && PA <= IOAPIC_BASE + IOAPIC_SIZE) {
         //IOAPIC
@@ -432,7 +462,7 @@ void hook_mmio_in(uint64_t PA,uint8_t* Data,uint16_t size,void* user_data) {
     }
     // This will rep in/out ins
     else if (PA < RAM_SIZE) {
-        memcpy(Data,RAM + PA, size);
+        memcpy(Data, RAM + PA, size);
     }
     else {
         std::cout << "Unknow MMIO" << std::endl;
@@ -443,20 +473,20 @@ void hook_mmio_out(uint64_t PA, uint8_t* Data, uint16_t size, void* user_data) {
     if (PA >= IOAPIC_BASE && PA <= IOAPIC_BASE + IOAPIC_SIZE) {
         //IOAPIC
         offset = PA - IOAPIC_BASE;
-        uint64_t value=0;
-        memcpy(&value,Data, size);
-        IOapic_mmio_write(offset,value,user_data);
+        uint64_t value = 0;
+        memcpy(&value, Data, size);
+        IOapic_mmio_write(offset, value, user_data);
     }
     else if (PA >= LAPIC_BASE && PA <= LAPIC_BASE + IOAPIC_SIZE) {
-        //IOAPIC
+        //LAPIC
         offset = PA - LAPIC_BASE;
         uint64_t value = 0;
         memcpy(&value, Data, size);
         lapic_mmio_write(offset, value, user_data);
     }
     // This will rep in/out ins
-    else if(PA<RAM_SIZE){
-        memcpy(RAM + PA,Data, size);
+    else if (PA < RAM_SIZE) {
+        memcpy(RAM + PA, Data, size);
     }
     else {
         std::cout << "Unknow MMIO" << std::endl;
@@ -464,11 +494,11 @@ void hook_mmio_out(uint64_t PA, uint8_t* Data, uint16_t size, void* user_data) {
 }
 void hook_wrmsr(uint32_t index, uint32_t rax, uint32_t rdx) {
     UINT64 value = ((UINT64)(rdx) << 32) | (rax & 0xFFFFFFFF);
-    MSR::msr_values[index]=value;
+    MSR::msr_values[index] = value;
     std::cout << "WRMSR" << std::hex << index << std::endl;
 }
 void hook_rdmsr(uint32_t index, uint32_t* rax, uint32_t* rdx) {
-    if (rax==nullptr && rdx==nullptr)throw 0;
+    if (rax == nullptr && rdx == nullptr)throw 0;
     uint64_t return_val = 0;
     switch (index) {
         // MCA Bank Control registers (0x400, 0x404, 0x408, ...)
@@ -479,7 +509,7 @@ void hook_rdmsr(uint32_t index, uint32_t* rax, uint32_t* rdx) {
     case 0x40C: // IA32_MC3_CTL
         return_val = 0xFFFFFFFFFFFFFFFF; break;
 
-    // MCA Bank Status registers — return 0 (no errors)
+        // MCA Bank Status registers — return 0 (no errors)
     case 0x401: // IA32_MC0_STATUS
     case 0x405: // IA32_MC1_STATUS
     case 0x409: // IA32_MC2_STATUS
@@ -493,7 +523,7 @@ void hook_rdmsr(uint32_t index, uint32_t* rax, uint32_t* rdx) {
     case 0x40E: case 0x40F:
         return_val = 0; break;
     default:
-        std::cout << "Unhandled RDMSR" <<std::hex<<index<< std::endl;
+        std::cout << "Unhandled RDMSR" << std::hex << index << std::endl;
         return_val = 0; break;
     }
     *rax = return_val & 0xFFFFFFFF;
