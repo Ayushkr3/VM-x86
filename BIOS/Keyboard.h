@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <queue>
 #include <functional>
-
+#include "SDL3/SDL.h"
 // 8042 Status Register bits
 #define KBD_STATUS_OBF      0x01  // Output buffer full (data ready to read)
 #define KBD_STATUS_IBF      0x02  // Input buffer full (busy)
@@ -465,3 +465,96 @@ namespace Scancode1 {
         //constexpr uint8_t DELETE = 0x53;
     }
 }
+#include <unordered_map>
+
+struct KeyEntry {
+    bool extended;      // needs 0xE0 prefix
+    uint8_t scancode;
+};
+
+static const std::unordered_map<SDL_Keycode, KeyEntry> keymap = {
+    // Letters
+    { SDLK_A, { false, Scancode1::A } },
+    { SDLK_B, { false, Scancode1::B } },
+    { SDLK_C, { false, Scancode1::C } },
+    { SDLK_D, { false, Scancode1::D } },
+    { SDLK_E, { false, Scancode1::E } },
+    { SDLK_F, { false, Scancode1::F } },
+    { SDLK_G, { false, Scancode1::G } },
+    { SDLK_H, { false, Scancode1::H } },
+    { SDLK_I, { false, Scancode1::I } },
+    { SDLK_J, { false, Scancode1::J } },
+    { SDLK_K, { false, Scancode1::K } },
+    { SDLK_L, { false, Scancode1::L } },
+    { SDLK_M, { false, Scancode1::M } },
+    { SDLK_N, { false, Scancode1::N } },
+    { SDLK_O, { false, Scancode1::O } },
+    { SDLK_P, { false, Scancode1::P } },
+    { SDLK_Q, { false, Scancode1::Q } },
+    { SDLK_R, { false, Scancode1::R } },
+    { SDLK_S, { false, Scancode1::S } },
+    { SDLK_T, { false, Scancode1::T } },
+    { SDLK_U, { false, Scancode1::U } },
+    { SDLK_V, { false, Scancode1::V } },
+    { SDLK_W, { false, Scancode1::W } },
+    { SDLK_X, { false, Scancode1::X } },
+    { SDLK_Y, { false, Scancode1::Y } },
+    { SDLK_Z, { false, Scancode1::Z } },
+
+    // Number row
+    { SDLK_1, { false, Scancode1::KEY_1 } },
+    { SDLK_2, { false, Scancode1::KEY_2 } },
+    { SDLK_3, { false, Scancode1::KEY_3 } },
+    { SDLK_4, { false, Scancode1::KEY_4 } },
+    { SDLK_5, { false, Scancode1::KEY_5 } },
+    { SDLK_6, { false, Scancode1::KEY_6 } },
+    { SDLK_7, { false, Scancode1::KEY_7 } },
+    { SDLK_8, { false, Scancode1::KEY_8 } },
+    { SDLK_9, { false, Scancode1::KEY_9 } },
+    { SDLK_0, { false, Scancode1::KEY_0 } },
+
+    // Function keys
+    { SDLK_F1,  { false, Scancode1::F1  } },
+    { SDLK_F2,  { false, Scancode1::F2  } },
+    { SDLK_F3,  { false, Scancode1::F3  } },
+    { SDLK_F4,  { false, Scancode1::F4  } },
+    { SDLK_F5,  { false, Scancode1::F5  } },
+    { SDLK_F6,  { false, Scancode1::F6  } },
+    { SDLK_F7,  { false, Scancode1::F7  } },
+    { SDLK_F8,  { false, Scancode1::F8  } },
+    { SDLK_F9,  { false, Scancode1::F9  } },
+    { SDLK_F10, { false, Scancode1::F10 } },
+    { SDLK_F11, { false, Scancode1::F11 } },
+    { SDLK_F12, { false, Scancode1::F12 } },
+
+    // Arrow keys — extended
+    { SDLK_UP,    { true, Scancode1::Extended::UP    } },
+    { SDLK_DOWN,  { true, Scancode1::Extended::DOWN  } },
+    { SDLK_LEFT,  { true, Scancode1::Extended::LEFT  } },
+    { SDLK_RIGHT, { true, Scancode1::Extended::RIGHT } },
+
+    // Navigation — extended
+    { SDLK_INSERT,   { true, Scancode1::Extended::INSERT } },
+    { SDLK_HOME,     { true, Scancode1::Extended::HOME   } },
+    { SDLK_END,      { true, Scancode1::Extended::END    } },
+    { SDLK_PAGEUP,   { true, Scancode1::Extended::PGUP   } },
+    { SDLK_PAGEDOWN, { true, Scancode1::Extended::PGDN   } },
+
+    // Modifiers
+    { SDLK_LSHIFT,   { false, Scancode1::LSHIFT   } },
+    { SDLK_RSHIFT,   { false, Scancode1::RSHIFT   } },
+    { SDLK_LCTRL,    { false, Scancode1::LCTRL    } },
+    { SDLK_RCTRL,    { true,  Scancode1::Extended::RCTRL } },
+    { SDLK_LALT,     { false, Scancode1::LALT     } },
+    { SDLK_RALT,     { true,  Scancode1::Extended::RALT  } },
+    { SDLK_CAPSLOCK, { false, Scancode1::CAPSLOCK } },
+    { SDLK_TAB,      { false, Scancode1::TAB      } },
+
+    // Special
+    { SDLK_RETURN,    { false, Scancode1::ENTER     } },
+    { SDLK_ESCAPE,    { false, Scancode1::ESC       } },
+    { SDLK_SPACE,     { false, Scancode1::SPACE     } },
+    { SDLK_BACKSPACE, { false, Scancode1::BACKSPACE } },
+    { SDLK_MINUS,     { false, Scancode1::MINUS     } },
+    { SDLK_EQUALS,    { false, Scancode1::EQUALS    } },
+};

@@ -12,6 +12,7 @@ class Timers {
 	static IOAPICState* ioapicS;
 	//Stores PIC1,PIC2,IOAPIC timer masks
 	static uint8_t PICsmask[3];
+	static uint32_t RegisterB;
 public:
 	static uint32_t rtc_period;
 	static bool rtc_period_enabled;
@@ -24,6 +25,7 @@ public:
 	static uint32_t  GetPMTimer();
 	static uint32_t GetCMOSregA();
 	static uint32_t GetCMOSregB();
+	static void SetCMOSregB(uint32_t val);
 	static uint32_t GetCMOSregC();
 	static uint32_t GetCMOSregD();
 };

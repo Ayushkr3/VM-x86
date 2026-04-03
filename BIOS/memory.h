@@ -17,6 +17,9 @@ static const uint64_t SVGA_SIZE = 0x1000000;
 static const uint64_t VGABIOS_BASE = 0xFEB00000;
 static const uint64_t VGABIOS_SIZE = 0x10000;
 
+static const uint64_t VGA_BASE = 0xA0000;
+static const uint64_t VGA_SIZE = 0x10000;
+
 extern char* RAM;
 extern char* SVGA;
 extern char* VGA_ROM;

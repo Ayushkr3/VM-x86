@@ -16,7 +16,7 @@ void WHPX::RaiseInterrupt(P_INTERRUPT_TYPE interr) {
         if (vec == -1)return;
         ctrl.Vector = vec;
         ok(WHvRequestInterrupt(partition,&ctrl,sizeof(ctrl)));
-        pic.ReleaseTimerLock();
+        //pic.ReleaseTimerLock();
         return;
     }
     WHV_REGISTER_NAME n = WHvX64RegisterDeliverabilityNotifications;
@@ -213,6 +213,7 @@ WHPX::WHPX(void* user_data_in_out) {
     ok(WHvMapGpaRange(partition, SVGA, SVGA_BASE, SVGA_SIZE,flags));
     flags = WHV_MAP_GPA_RANGE_FLAGS::WHvMapGpaRangeFlagExecute | WHV_MAP_GPA_RANGE_FLAGS::WHvMapGpaRangeFlagRead | WHV_MAP_GPA_RANGE_FLAGS::WHvMapGpaRangeFlagWrite;
     ok(WHvMapGpaRange(partition, VGA_ROM, VGABIOS_BASE, VGABIOS_SIZE, flags));
+    ok(WHvUnmapGpaRange(partition, VGA_BASE, VGA_SIZE));
     cpuctx = new whCPUctx(partition);
 
     UD* ux = (UD*)user_data_in_out;

@@ -274,10 +274,10 @@ public:
 
     uint32_t sectors_per_drq;
     uint32_t data_pointer;
-    uint32_t data_length;
-    uint32_t data_end;
+    uint64_t data_length;
+    uint64_t data_end;
     int32_t current_command;
-    uint32_t write_dest;
+    uint64_t write_dest;
 
     std::vector<uint8_t> data;
 

@@ -22,6 +22,8 @@ uint8_t Timers::PICsmask[3] = { 0xff};
 PICState* Timers::picS = nullptr;
 IOAPICState* Timers::ioapicS= nullptr;
 std::chrono::steady_clock::time_point start_time;
+
+uint32_t Timers::RegisterB=0x2;
 double now() {
     static const auto start = std::chrono::high_resolution_clock::now();
     return std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
@@ -88,7 +90,10 @@ uint32_t Timers::GetCMOSregA() {
     return return_val;
 }
 uint32_t Timers::GetCMOSregB() {
-    return 0x02;
+    return RegisterB;
+}
+void Timers::SetCMOSregB(uint32_t val) {
+    RegisterB=val;
 }
 uint32_t Timers::GetCMOSregC(){
     if (picS->rtc_irq_pending.load()) {
@@ -115,20 +120,38 @@ uint32_t Timers::ReturnCMOSData(int index) {
     auto now = std::chrono::system_clock::now();
     std::time_t t = std::chrono::system_clock::to_time_t(now);
     tm tm_info = {};
-    localtime_s(&tm_info,&t);
+    localtime_s(&tm_info, &t);
+
+    bool bcd_mode = !(GetCMOSregB() & 0x04);
+    bool hour_24 = (GetCMOSregB() & 0x02);
 
     auto toBCD = [](int val) -> uint8_t {
         return ((val / 10) << 4) | (val % 10);
     };
+    auto encode = [&](int val) -> uint8_t {
+        return bcd_mode ? toBCD(val) : (uint8_t)val;
+    };
+    auto encode_hours = [&]() -> uint8_t {
+        int h = tm_info.tm_hour;
+        if (hour_24) return encode(h);
+
+        bool pm = (h >= 12);
+        h = h % 12;
+        if (h == 0) h = 12;
+        uint8_t encoded = bcd_mode ? toBCD(h) : (uint8_t)h;
+        if (pm) encoded |= 0x80;  // PM flag in bit 7
+        return encoded;
+    };
+
     switch (index) {
-    case 0x00: return toBCD(tm_info.tm_sec);   // seconds
-    case 0x02: return toBCD(tm_info.tm_min);   // minutes
-    case 0x04: return toBCD(tm_info.tm_hour);  // hours
-    case 0x06: return toBCD(tm_info.tm_wday + 1); // day of week (1-7)
-    case 0x07: return toBCD(tm_info.tm_mday);  // day of month
-    case 0x08: return toBCD(tm_info.tm_mon + 1); // month
-    case 0x09: return toBCD(tm_info.tm_year % 100); // year (2 digits)
-    case 0x32: return toBCD((tm_info.tm_year + 1900) / 100); // century
+    case 0x00: return encode(tm_info.tm_sec);
+    case 0x02: return encode(tm_info.tm_min);
+    case 0x04: return encode_hours();
+    case 0x06: return encode(tm_info.tm_wday + 1);
+    case 0x07: return encode(tm_info.tm_mday);
+    case 0x08: return encode(tm_info.tm_mon + 1);
+    case 0x09: return encode(tm_info.tm_year % 100);
+    case 0x32: return encode((tm_info.tm_year + 1900) / 100);
     }
     return 0;
 }

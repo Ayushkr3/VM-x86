@@ -162,7 +162,7 @@ void IDEInterface::setDiskBuffer(std::fstream* new_buffer, uint64_t new_buffer_s
         std::cout << name << ": warning: rounding up cylinder count" << std::endl;
     }
 
-    //pushIrq();
+    pushIrq();
 }
 
 void IDEInterface::deviceReset() {
@@ -323,15 +323,15 @@ void IDEInterface::writeEnd() {
 }
 
 void IDEInterface::doWrite() {
+    status_reg = ATA_SR_DRDY | ATA_SR_DSC;
+    ataAdvance(current_command, data_length / 512);
+    pushIrq();
+    reportWrite(data_length);
     if (buffer && write_dest + data_length <= buffer_size) {
         buffer->seekp(write_dest, std::ios::beg);
         buffer->write((const char*)data.data(), data_length);
         buffer->flush();
     }
-    status_reg = ATA_SR_DRDY | ATA_SR_DSC;
-    ataAdvance(current_command, data_length / 512);
-    pushIrq();
-    reportWrite(data_length);
 }
 
 uint32_t IDEInterface::getChs() const {
@@ -447,17 +447,29 @@ void IDEInterface::readBuffer(uint32_t start, uint32_t length,
     uint32_t id = last_io_id++;
     in_progress_io_ids.insert(id);
 
-    // Simulate async read
-    if (buffer && start + length <= buffer_size) {
+    if (!buffer || start + length > buffer_size) {
+        // clean up and bail — mirrors JS buffer.get never calling back
+        in_progress_io_ids.erase(id);
+        return;
+    }
+
+    // synchronous "async" read — mirrors what happens inside buffer.get's callback
+    {
+        // Check if cancelled (mirrors: if(this.cancelled_io_ids.delete(id)) return)
         if (cancelled_io_ids.erase(id)) {
-            in_progress_io_ids.erase(id);
+            // JS asserts it's NOT in in_progress at this point because
+            // cancelIoOperations() moved it. Mirror that.
+            in_progress_io_ids.count(id);
             return;
         }
-        in_progress_io_ids.erase(id);
+
+        // Not cancelled — remove from in_progress and invoke callback
+        bool removed = in_progress_io_ids.erase(id);
+
         buffer->seekg(start, std::ios::beg);
-        std::vector<uint8_t> data(length);
-        buffer->read((char*)data.data(), length);
-        callback(data.data());
+        std::vector<uint8_t> buf(length);
+        buffer->read(reinterpret_cast<char*>(buf.data()), length);
+        callback(buf.data());
     }
 }
 
@@ -535,6 +547,9 @@ void IDEInterface::setState(const std::vector<uint64_t>& state) {
 
 // Stub implementations for complex methods
 void IDEInterface::ataCommand(uint8_t cmd) {
+    if (cmd == ATA_CMD_EXECUTE_DEVICE_DIAGNOSTIC) {
+        std::cout << name << ": ATA not ignored: no drive connected" << std::endl;
+    }
     if (!drive_connected && cmd != ATA_CMD_EXECUTE_DEVICE_DIAGNOSTIC) {
         std::cout << name << ": ATA command ignored: no drive connected" << std::endl;
         //ataBortCommand();
@@ -550,16 +565,39 @@ void IDEInterface::ataCommand(uint8_t cmd) {
         pushIrq();
         break;
     case ATA_CMD_READ_SECTORS:
+        if (is_atapi) {
+            lba_mid_reg = ATAPI_SIGNATURE_LO;  // see [ATA8-ACS] 4.3
+            lba_high_reg = ATAPI_SIGNATURE_HI;
+            ataBortCommand();
+        }
+        else {
+            ataReadSectors(cmd);
+        }
+        break;
     case ATA_CMD_READ_SECTORS_EXT:
     case ATA_CMD_READ_MULTIPLE:
     case ATA_CMD_READ_MULTIPLE_EXT:
-        ataReadSectors(cmd);
+        if (is_atapi)
+        {
+            ataBortCommand();
+        }
+        else
+        {
+            ataReadSectors(cmd);
+        }
         break;
     case ATA_CMD_WRITE_SECTORS:
     case ATA_CMD_WRITE_SECTORS_EXT:
     case ATA_CMD_WRITE_MULTIPLE:
     case ATA_CMD_WRITE_MULTIPLE_EXT:
-        ataWriteSectors(cmd);
+        if (is_atapi)
+        {
+            ataBortCommand();
+        }
+        else
+        {
+            ataWriteSectors(cmd);
+        }
         break;
     case ATA_CMD_READ_DMA:
     case ATA_CMD_READ_DMA_EXT:
@@ -570,16 +608,10 @@ void IDEInterface::ataCommand(uint8_t cmd) {
         ataWriteSectorsDma(cmd);
         break;
     case ATA_CMD_IDENTIFY_DEVICE:
-        if (!drive_connected) {
-            status_reg = ATA_SR_DRDY | ATA_SR_ERR;
-            error_reg = ATA_ER_ABRT;
-            break;
-        }
         if (is_atapi) {
             lba_mid_reg = ATAPI_SIGNATURE_LO;
             lba_high_reg = ATAPI_SIGNATURE_HI;
             ataBortCommand();
-            break;
         }
         else {
             createIdentifyPacket();
@@ -588,10 +620,6 @@ void IDEInterface::ataCommand(uint8_t cmd) {
         }
         break;
     case ATA_CMD_IDENTIFY_PACKET_DEVICE:
-        if (!drive_connected) {
-            status_reg = 0x00;
-            return;
-        }
         if (is_atapi) {
             createIdentifyPacket();
             status_reg = ATA_SR_DRDY | ATA_SR_DRQ | ATA_SR_DSC;
@@ -606,6 +634,7 @@ void IDEInterface::ataCommand(uint8_t cmd) {
         if (is_atapi) {
             dataAllocate(12);
             data_end = 12;
+            sector_count_reg = 1;
             status_reg = ATA_SR_DRDY|ATA_SR_DSC |ATA_SR_DRQ;
             pushIrq();
         }
@@ -638,6 +667,10 @@ void IDEInterface::ataCommand(uint8_t cmd) {
         status_reg = ATA_SR_DRDY | ATA_SR_DSC;
         pushIrq();
         break;
+    case ATA_CMD_READ_VERIFY_SECTORS:
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC;
+        pushIrq();
+        break;
     default:
         std::cout << "Unknown ATA command" << std::hex << cmd<<std::endl;
         ataBortCommand();
@@ -647,42 +680,59 @@ void IDEInterface::ataCommand(uint8_t cmd) {
 
 void IDEInterface::ataReadSectors(uint8_t cmd) {
     bool is_lba48 = (cmd == ATA_CMD_READ_SECTORS_EXT ||
-        cmd == ATA_CMD_READ_MULTIPLE ||
-        cmd == ATA_CMD_READ_MULTIPLE_EXT);
+        cmd == ATA_CMD_READ_MULTIPLE);           // matches JS exactly
+    bool is_single = (cmd == ATA_CMD_READ_SECTORS ||
+        cmd == ATA_CMD_READ_SECTORS_EXT);
+
     uint32_t count = getCount(is_lba48);
     uint32_t lba = getLba(is_lba48);
     uint32_t byte_count = count * sector_size;
+    uint32_t start = lba * sector_size;
 
-    if (buffer && lba < sector_count) {
-        status_reg = ATA_SR_DRDY | ATA_SR_BSY;
-        reportReadStart();
-
-        uint32_t start = lba * sector_size;
-        readBuffer(start, byte_count, [this, cmd, count, byte_count](const uint8_t* data) {
-            dataSet(data, byte_count);
-            status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
-            data_end = min(byte_count, sectors_per_drq * 512);
-            ataAdvance(cmd, min(count, sectors_per_track));
-            pushIrq();
-            reportReadEnd(byte_count);
-            });
+    if (start + byte_count > buffer_size) {
+        status_reg = 0xFF;
+        pushIrq();
+        return;
     }
+
+    status_reg = ATA_SR_DRDY | ATA_SR_BSY;
+    reportReadStart();
+
+    readBuffer(start, byte_count, [this, cmd, count, byte_count, is_single](const uint8_t* buf) {
+        dataSet(buf, byte_count);
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
+
+        data_end = is_single
+            ? 512
+            : min(byte_count, sectors_per_drq * 512u);
+
+        ataAdvance(cmd, is_single
+            ? 1
+            : min(count, (uint32_t)sectors_per_track));
+
+        pushIrq();
+        reportReadEnd(byte_count);
+        });
 }
 
 void IDEInterface::ataWriteSectors(uint8_t cmd) {
     bool is_lba48 = (cmd == ATA_CMD_WRITE_SECTORS_EXT ||
         cmd == ATA_CMD_WRITE_MULTIPLE ||
         cmd == ATA_CMD_WRITE_MULTIPLE_EXT);
-    uint32_t count = getCount(is_lba48);
-    uint32_t lba = getLba(is_lba48);
-    uint32_t byte_count = count * sector_size;
-    uint32_t start = lba * sector_size;
-
+    uint64_t count = getCount(is_lba48);
+    uint64_t lba = getLba(is_lba48);
+    uint64_t byte_count = count * sector_size;
+    uint64_t start = lba * sector_size;
+    bool isSingle = cmd == ATA_CMD_WRITE_SECTORS || cmd == ATA_CMD_WRITE_SECTORS_EXT;
     if (buffer && start + byte_count <= buffer_size) {
         status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
         dataAllocateNoClear(byte_count);
-        data_end = min(byte_count, sectors_per_drq * 512);
+        data_end = isSingle ? 512 : min(byte_count, sectors_per_drq * 512);
         write_dest = start;
+    }
+    else {
+        status_reg = 0xFF;
+        pushIrq();
     }
 }
 
@@ -993,7 +1043,7 @@ void IDEInterface::atapiRead(std::vector<uint8_t> cmd) {
     {
         byte_count = min(byte_count, buffer_size - start);
         status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_BSY;
-        readBuffer(start, byte_count, [this,&req_length, cmd, count, byte_count](const uint8_t* data)
+        readBuffer(start, byte_count, [&](const uint8_t* data)
         {
             dataSet(data, byte_count);
             status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
@@ -1310,11 +1360,9 @@ uint32_t IDEChannel::readStatus() {
 
 void IDEChannel::writeControl(uint8_t data) {
     if (data & ATA_CR_SRST) {
+        LowerIRQ();
         master->deviceReset();
         slave->deviceReset();
-        if (!(device_control_reg & ATA_CR_NIEN)) {
-            pushIrq();
-        }
     }
     device_control_reg = data;
 }

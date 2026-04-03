@@ -41,9 +41,9 @@ public:
 };
 class VGAController :public PCIDevice {
     bool rom_bar_sizing_probe = false;
+    bool svga_bar_sizing_probe = false;
 public:
-    ScreenAdapter* sc;
-    VGAScreen* vga;
+    VGACommonState* vga;
     VGAController() {
         memset(config, 0, sizeof(config));
 
@@ -61,10 +61,10 @@ public:
         *(uint32_t*)&config[0x30] = VGABIOS_BASE & 0xFFFFF800;
         rom_bar_size = VGABIOS_SIZE; // 64KB
 
-        set_bar(0, VGA_LFB_ADDRESS | 0x08, 0x1000000);
+        set_bar(0, 0xE0000000 | 0x08, 0x1000000);
+        vga= new VGACommonState;
+        vga_common_init(vga);
 
-        sc = new ScreenAdapter;
-        vga = new VGAScreen(sc, SVGA_SIZE);
     }
     void config_write(uint32_t offset, uint32_t value);
     uint32_t config_read(uint32_t offset);

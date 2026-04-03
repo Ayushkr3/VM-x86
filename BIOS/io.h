@@ -25,6 +25,7 @@ struct UD {
 	PICState* pic;
 	void* whpxCtx;
 };
+extern UD ud;
 extern PS2Keyboard* kbd;
 
 uint32_t hook_in(uint16_t port, int size, void* user_data);
@@ -33,5 +34,5 @@ void hook_wrmsr(uint32_t index,uint32_t rax,uint32_t rdx);
 void hook_rdmsr(uint32_t index, uint32_t* rax,uint32_t* rdx);
 void hook_mmio_in(uint64_t PA, uint8_t* Data, uint16_t size,void* user_data);
 void hook_mmio_out(uint64_t PA, uint8_t* Data, uint16_t size, void* user_data);
-void InitIO(PCISystemBus* sb, RaiseIRQ_f rfwd,std::string isopath);
+void InitIO(PCISystemBus* sb, RaiseIRQ_f rfwd, std::string isoPath);
 void init_cmos();

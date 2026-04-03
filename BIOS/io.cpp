@@ -9,6 +9,7 @@ std::unordered_map<uint64_t, uint64_t> MSR::msr_values;
 uint32_t A20 = 0;
 IO ports;
 FWCfg fw_cfg;
+UD ud;
 //Forwarded declaration from VM.CPP to stop emulation
 //Forwarded declaration to get eflags (wether to deliver int or not)
 GetEflagsFWD GetEflags_fwd;
@@ -41,12 +42,12 @@ void InitIDE(PCISystemBus* sb, std::string isoPath) {
     std::fstream* iso = new std::fstream;
     iso->open(isoPath, std::ios::in | std::ios::binary);
     std::fstream* hd = new std::fstream;
-    /*hd->open("D:\\windows nt\\disk0.diskX", std::ios::in | std::ios::out | std::ios::binary);
+    hd->open("D:\\windows nt\\disk0.diskX", std::ios::in | std::ios::out | std::ios::binary);
     config[0][0].buffer = hd;
     config[0][0].is_cdrom = false;
     hd->seekg(0, std::ios::end);
     config[0][0].buffer_size = hd->tellg();
-    hd->seekg(0, std::ios::beg);*/
+    hd->seekg(0, std::ios::beg);
 
     config[0][1].buffer = nullptr;
     config[0][1].is_cdrom = false;
@@ -142,9 +143,12 @@ uint32_t hook_in(uint16_t port, int size, void* user_data) {
         return_val = sb->in_hook(port, size);
         break;
         //VGA controller
-    case 0x3C0: case 0x3C1: case 0x3C2: case 0x3C4:
-    case 0x3C5: case 0x3CE: case 0x3CF: case 0x3D4:
-    case 0x3D5: case 0x3DA: case 0x3CC: case 0x3C6:return_val = sb->in_hook(port,size); break;
+    case 0x3C0: case 0x3C1: case 0x3C2: case 0x3C3:
+    case 0x3C4: case 0x3C5: case 0x3C6: case 0x3C7:
+    case 0x3C8: case 0x3C9: case 0x3CA: case 0x3CB:
+    case 0x3CC: case 0x3CD: case 0x3CE: case 0x3CF:
+    case 0x3D4: case 0x3D5: case 0x3DA:
+        return_val = sb->in_hook(port, size); break;
         // Floppy controller ports
     case 0x3F0: return_val = 0x00; break;  // floppy SRA
     case 0x3F2: return_val = 0x00; break;  // floppy DOR
@@ -234,6 +238,9 @@ uint32_t hook_in(uint16_t port, int size, void* user_data) {
     case 0x64:
         return_val = kbd->read_status();
         break;
+    case 0x1CF:
+        return_val = sb->in_hook(port, size);
+        break;
     default:
         printf("[IN ] port=0x%04X size=%d\n", port, size);
         return_val = 0xff;
@@ -263,6 +270,7 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
         }
         case 0xB:
             Timers::rtc_period_enabled = (value & 0x70) != 0;
+            //Timers::SetCMOSregB(value);
             break;
         }
         if (CMOS::cmos_index < 128) CMOS::cmos_data[CMOS::cmos_index] = value & 0xFF;
@@ -356,9 +364,11 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
         sb->out_hook(port, value, size);
         break;
         //VGA controller
-    case 0x3C0: case 0x3C2: case 0x3C4: case 0x3C5:case 0x3C9:
-    case 0x3CE: case 0x3CF: case 0x3D4: case 0x3D5:case 0x3C8:
-    case 0x3C6:
+    case 0x3C0: case 0x3C1: case 0x3C2: case 0x3C3:
+    case 0x3C4: case 0x3C5: case 0x3C6: case 0x3C7:
+    case 0x3C8: case 0x3C9: case 0x3CA: case 0x3CB:
+    case 0x3CC: case 0x3CD: case 0x3CE: case 0x3CF:
+    case 0x3D4: case 0x3D5: case 0x3DA:
         sb->out_hook(port, value, size);
         break;
         // Floppy controller ports (silently ignore writes)
@@ -440,6 +450,10 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
     case 0x64:
         kbd->write_command(value & 0xFF);
         break;
+    case 0x1CE:
+    case 0x1CF:
+        sb->out_hook(port, value,size);
+        break;
     default:
         printf("[OUT] port=0x%04X size=%d val=0x%X\n", port, size, value);
         break;
@@ -459,6 +473,11 @@ void hook_mmio_in(uint64_t PA, uint8_t* Data, uint16_t size, void* user_data) {
         offset = PA - LAPIC_BASE;
         uint64_t res = lapic_mmio_read(offset, user_data);
         memcpy(Data, &res, size);
+    }
+    else if (PA >= VGA_BASE && PA <= VGA_BASE+VGA_SIZE) {
+        uint32_t value = 0;
+        value = vga_mem_readb(ud.sb->vgaC->vga, PA);
+        memcpy(Data,&value, size);
     }
     // This will rep in/out ins
     else if (PA < RAM_SIZE) {
@@ -483,6 +502,11 @@ void hook_mmio_out(uint64_t PA, uint8_t* Data, uint16_t size, void* user_data) {
         uint64_t value = 0;
         memcpy(&value, Data, size);
         lapic_mmio_write(offset, value, user_data);
+    }
+    else if (PA >= VGA_BASE && PA <= VGA_BASE+VGA_SIZE) {
+        uint32_t value = 0;
+        memcpy(&value, Data, size);
+        vga_mem_writeb(ud.sb->vgaC->vga, PA, value);
     }
     // This will rep in/out ins
     else if (PA < RAM_SIZE) {

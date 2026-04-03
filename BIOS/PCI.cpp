@@ -9,7 +9,7 @@ PCISystemBus::PCISystemBus() : index(0) {
     attachedDevice.push_back(&HB);
     attachedDevice.push_back(&SB);
     // Pre-init secondary with CDROM signature
-    
+
 }
 void HostBridge::config_write(uint32_t offset, uint32_t value) {
     if ((offset >= 0x10 && offset <= 0x24) || offset == 0x30) return;
@@ -29,6 +29,13 @@ uint32_t VGAController::config_read(uint32_t offset) {
         // Always return locked address + enable bit
         return (VGABIOS_BASE & 0xFFFFF800) | 0x1;
     }
+    else if (offset == 0x10) {
+        if (svga_bar_sizing_probe) {
+            svga_bar_sizing_probe = false;
+            return (~(SVGA_SIZE - 1)) | 0x8;  // prefetchable memory
+        }
+        return (SVGA_BASE & 0xFFFFFFF0) | 0x8;
+    }
     return PCIDevice::config_read(offset);
 }
 
@@ -41,6 +48,12 @@ void VGAController::config_write(uint32_t offset, uint32_t value) {
         }
         // Ignore any attempt to change the address, keep it locked
         *(uint32_t*)&config[0x30] = (VGABIOS_BASE & 0xFFFFF800) | 0x1;
+        return;
+    }
+    if (offset == 0x10) {
+        if (value == 0xFFFFFFFF) {
+            svga_bar_sizing_probe = true;
+        }
         return;
     }
     if (offset >= 0x18 && offset <= 0x24) return;
@@ -90,14 +103,20 @@ void PCISystemBus::out_hook(uint32_t port, uint32_t value, int size) {
         if (!ID->primary)return;
         channel = ID->primary;
         channel->writeControl(value);
+        return;
     }
     else if (port == 0x376) {
         if (!ID->secondary)return;
         channel = ID->secondary;
         channel->writeControl(value);
+        return;
     }
     else if (port >= 0x3C0 && port <= 0x3DA) {
         offset = port - 0x3C0;
+        goto VGA_COMMAND;
+    }
+    else if (port == 0x1CE|| port == 0x1CF) {
+        offset = port;
         goto VGA_COMMAND;
     }
     return;
@@ -134,18 +153,62 @@ IDE_COMMAND:
         return;
 VGA_COMMAND:
         switch (offset) {
-        case 0x00: vgaC->vga->port3C0_write(value); break;
-        case 0x02: vgaC->vga->port3C2_write(value); break;
-        case 0x04: vgaC->vga->port3C4_write(value); break;
-        case 0x05: vgaC->vga->port3C5_write(value); break;
-        case 0x06: vgaC->vga->port3C6_write(value); break;
-        case 0x07: vgaC->vga->port3C7_write(value); break;
-        case 0x08: vgaC->vga->port3C8_write(value); break;
-        case 0x09: vgaC->vga->port3C9_write(value); break;
-        case 0x0E: vgaC->vga->port3CE_write(value); break;
-        case 0x0F: vgaC->vga->port3CF_write(value); break;
-        case 0x14: (size == 1) ? vgaC->vga->port3D4_write(value): vgaC->vga->port3D4_write16(value); break;
-        case 0x15: (size == 1) ? vgaC->vga->port3D5_write(value) : vgaC->vga->port3D5_write16(value); break;
+        case 0x00: vga_ioport_write(vgaC->vga, port, value); break;
+        case 0x02: vga_ioport_write(vgaC->vga, port, value); break;
+
+        case 0x04: { 
+            vga_ioport_write(vgaC->vga, port, value);
+            if (size == 2) {
+                value >>= 8;
+                port++;
+            }
+            else if (size > 2) {
+                throw size;
+            }
+            else {
+                break;
+            }
+        }
+        case 0x05: vga_ioport_write(vgaC->vga, port, value); break;
+        case 0x06: vga_ioport_write(vgaC->vga, port, value); break;
+        case 0x07: vga_ioport_write(vgaC->vga, port, value); break;
+        case 0x08: vga_ioport_write(vgaC->vga, port, value); break;
+        case 0x09: vga_ioport_write(vgaC->vga, port, value); break;
+        case 0x0E: { 
+            vga_ioport_write(vgaC->vga, port, value);
+            if (size == 2) {
+                value >>= 8;
+                port++;
+            }
+            else if (size > 2) {
+                throw size;
+            }
+            else {
+                break;
+            }
+        }
+        case 0x0F: vga_ioport_write(vgaC->vga, port, value); break;
+        case 0x14: { 
+            vga_ioport_write(vgaC->vga, port, value);
+            if (size == 2) {
+                value >>= 8;
+                port++;
+            }
+            else if (size > 2) {
+                throw size;
+            }
+            else {
+                break;
+            }
+        }
+        case 0x15: vga_ioport_write(vgaC->vga, port, value); break;
+        case 0x1CE: {
+            vbe_ioport_write_index(vgaC->vga, port, value);
+            break;
+        }
+        case 0x1CF:
+            vbe_ioport_write_data(vgaC->vga, port, value);
+            break;
         }
         return;
 }
@@ -194,6 +257,9 @@ uint32_t PCISystemBus::in_hook(uint32_t port, int size) {
         offset = port - 0x3C0;
         goto VGA_COMMAND;
     }
+    else if (port == 0x1CF) {
+        return vbe_ioport_read_data(vgaC->vga, port);
+    }
     return 0xFF;
 
 IDE_COMMAND:
@@ -214,20 +280,20 @@ IDE_COMMAND:
     return 0xFF;
 VGA_COMMAND:
     switch (offset) {
-    case 0x00: return (size==1) ? vgaC->vga->port3C0_read(): vgaC->vga->port3C0_read16();
-    case 0x01: return vgaC->vga->port3C1_read();
-    case 0x04: return vgaC->vga->port3C4_read();
-    case 0x05: return vgaC->vga->port3C5_read();
-    case 0x06: return vgaC->vga->port3C6_read();
-    case 0x07: return vgaC->vga->port3C7_read();
-    case 0x08: return vgaC->vga->port3C8_read();
-    case 0x09: return vgaC->vga->port3C9_read();
-    case 0x0C: return vgaC->vga->port3CC_read();
-    case 0x0E: return vgaC->vga->port3CE_read();
-    case 0x0F: return vgaC->vga->port3CF_read();
-    case 0x14: return vgaC->vga->port3D4_read();
-    case 0x15: return (size==1) ? vgaC->vga->port3D5_read() : vgaC->vga->port3D5_read16();
-    case 0x1A: return vgaC->vga->port3DA_read();
+    case 0x00: return vga_ioport_read(vgaC->vga,port);
+    case 0x01: return vga_ioport_read(vgaC->vga, port);
+    case 0x04: return vga_ioport_read(vgaC->vga, port);
+    case 0x05: return vga_ioport_read(vgaC->vga, port);
+    case 0x06: return vga_ioport_read(vgaC->vga, port);
+    case 0x07: return vga_ioport_read(vgaC->vga, port);
+    case 0x08: return vga_ioport_read(vgaC->vga, port);
+    case 0x09: return vga_ioport_read(vgaC->vga, port);
+    case 0x0C: return vga_ioport_read(vgaC->vga, port);
+    case 0x0E: return vga_ioport_read(vgaC->vga, port);
+    case 0x0F: return vga_ioport_read(vgaC->vga, port);
+    case 0x14: return vga_ioport_read(vgaC->vga, port);
+    case 0x15: return vga_ioport_read(vgaC->vga, port);
+    case 0x1A: return vga_ioport_read(vgaC->vga, port);
     }
     return 0xFF;
 }

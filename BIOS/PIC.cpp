@@ -34,10 +34,6 @@ void PICState::RaiseIRQ(int irqN)
     IOREDEntry pin = ioapic.redir[irqN];
     bool mask = (pin.low & LVT_MASK_BIT);
     if (!mask) {
-        //irq 0 and 8
-        if (lock()) {
-            return;
-        }
         intT.irqN = irqN;
         intT.isIOAPIC = true;
         intT.APIC_ID = (pin.high >> 24) & 0xFFu,
