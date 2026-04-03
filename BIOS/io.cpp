@@ -57,16 +57,15 @@ void InitIDE(PCISystemBus* sb, std::string isoPath) {
     config[1][0].is_cdrom = false;
     config[1][0].buffer_size = 0;
 
-    config[1][0].buffer = iso;
-    config[1][0].is_cdrom = true;
-    iso->seekg(0, std::ios::end);
-    config[1][0].buffer_size = iso->tellg();
+    //config[1][0].buffer = iso;
+    //config[1][0].is_cdrom = true;
+    //iso->seekg(0, std::ios::end);
+    //config[1][0].buffer_size = iso->tellg();
     iso->seekg(0, std::ios::beg);
 
     sb->ID = new IDEController(config);
     sb->AttachDevice((PCIDevice*)(sb->ID));
 }
-PS2Keyboard* kbd;
 void InitIO(PCISystemBus* sb, RaiseIRQ_f rfwd, std::string isoPath) {
     PICState::Init(rfwd);
     Timers::Init();
@@ -75,10 +74,10 @@ void InitIO(PCISystemBus* sb, RaiseIRQ_f rfwd, std::string isoPath) {
     KernelDebugger::com1_init_pipe([]() {
         pic.RaiseIRQ(0x4);
         });
-    kbd = new PS2Keyboard([rfwd](int irq) {
+    ud.kbd = new PS2Keyboard([rfwd](int irq) {
         pic.RaiseIRQ(irq);
         });
-
+    PS2Keyboard* kbd = ud.kbd;
     sb->vgaC = new VGAController;
     sb->AttachDevice((PCIDevice*)sb->vgaC);
 }
@@ -113,6 +112,7 @@ uint32_t hook_in(uint16_t port, int size, void* user_data) {
         case 0x08:
         case 0x09:
         case 0x32:
+        case 0x37:
             return_val = Timers::ReturnCMOSData(CMOS::cmos_index);
             break;
         case 0xA:return_val = Timers::GetCMOSregA(); break;
@@ -233,10 +233,10 @@ uint32_t hook_in(uint16_t port, int size, void* user_data) {
         return_val = Timers::GetPMTimer();
         break;
     case 0x60:
-        return_val = kbd->read_data();
+        return_val = ud->kbd->read_data();
         break;
     case 0x64:
-        return_val = kbd->read_status();
+        return_val = ud->kbd->read_status();
         break;
     case 0x1CF:
         return_val = sb->in_hook(port, size);
@@ -270,7 +270,7 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
         }
         case 0xB:
             Timers::rtc_period_enabled = (value & 0x70) != 0;
-            //Timers::SetCMOSregB(value);
+            Timers::SetCMOSregB(value);
             break;
         }
         if (CMOS::cmos_index < 128) CMOS::cmos_data[CMOS::cmos_index] = value & 0xFF;
@@ -445,10 +445,10 @@ void hook_out(uint16_t port, int size, uint32_t value, void* user_data) {
         printf("%c", value);
         break;
     case 0x60:
-        kbd->write_data(value & 0xFF);
+        ud->kbd->write_data(value);
         break;
     case 0x64:
-        kbd->write_command(value & 0xFF);
+        ud->kbd->write_command(value);
         break;
     case 0x1CE:
     case 0x1CF:

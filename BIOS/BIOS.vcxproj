@@ -170,7 +170,7 @@
     <ClInclude Include="IDE_controller.h" />
     <ClInclude Include="io.h" />
     <ClInclude Include="kd.h" />
-    <ClInclude Include="Keyboard.h" />
+    <ClInclude Include="i8402.h" />
     <ClInclude Include="memory.h" />
     <ClInclude Include="PCI.h" />
     <ClInclude Include="PCI_def.h" />

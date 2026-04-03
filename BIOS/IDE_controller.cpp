@@ -671,6 +671,10 @@ void IDEInterface::ataCommand(uint8_t cmd) {
         status_reg = ATA_SR_DRDY | ATA_SR_DSC;
         pushIrq();
         break;
+    case ATA_CMD_STANDBY_IMMEDIATE:
+        status_reg = ATA_SR_DRDY | ATA_SR_DSC;
+        pushIrq();
+        break;
     default:
         std::cout << "Unknown ATA command" << std::hex << cmd<<std::endl;
         ataBortCommand();

@@ -8,13 +8,13 @@
 
 class DisplayAdapter:public ScreenAdapter {
     typedef void (*UpdateDispatchLoop)(void* ctx);
-    SDL_Window* window;
     SDL_GLContext glCtx;
     SDL_Renderer* renderer;
     SDL_Texture* texture;
     UpdateDispatchLoop DisplayUpdate;
     CRITICAL_SECTION cs;
 public:
+    SDL_Window* window;
     VGAController* vgaC = nullptr;
     int text_cols = 80, text_rows = 25;
     int gfx_width = 720, gfx_height = 400;

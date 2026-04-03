@@ -22,7 +22,7 @@ uint8_t Timers::PICsmask[3] = { 0xff};
 PICState* Timers::picS = nullptr;
 IOAPICState* Timers::ioapicS= nullptr;
 std::chrono::steady_clock::time_point start_time;
-
+std::vector<Timers::CallbackData> Timers::callbacks;
 uint32_t Timers::RegisterB=0x2;
 double now() {
     static const auto start = std::chrono::high_resolution_clock::now();
@@ -61,12 +61,27 @@ void Timers::TimerThread() {
         if (rtc_period_enabled)
             next_wake = min(next_wake, rtc_next);
 
-        double sleep_sec = next_wake - now();
-        Sleep(64);
-        if (sleep_sec > 0) {
-            auto sleep_us = std::chrono::duration<double>(sleep_sec);
-            std::this_thread::sleep_for(sleep_us);
+        double sleep_sec = 40;
+        for (int i = 0; i < callbacks.size(); i++) {
+            callbacks[i].current+= sleep_sec;
+            if (callbacks[i].current == callbacks[i].TimeinMS) {
+                callbacks[i].current = 0;
+                callbacks[i].fn();
+            }
         }
+        if (sleep_sec > 0) {
+            /*auto sleep_us = std::chrono::duration<double>(sleep_sec);
+            std::this_thread::sleep_for(sleep_us);*/
+            Sleep(sleep_sec);
+        }
+    }
+}
+void Timers::RegisterFixedIntervalCallback(std::function<void()>fn, int timeinMS) {
+    CallbackData data = {};
+    if (timeinMS > 0) {
+        data.fn = fn;
+        data.TimeinMS = timeinMS;
+        callbacks.push_back(data);
     }
 }
 void Timers::SelectIRQandRaiseInterrupt(int irqN) {
@@ -144,14 +159,23 @@ uint32_t Timers::ReturnCMOSData(int index) {
     };
 
     switch (index) {
-    case 0x00: return encode(tm_info.tm_sec);
+    /*case 0x00: return encode(tm_info.tm_sec);
     case 0x02: return encode(tm_info.tm_min);
     case 0x04: return encode_hours();
     case 0x06: return encode(tm_info.tm_wday + 1);
     case 0x07: return encode(tm_info.tm_mday);
     case 0x08: return encode(tm_info.tm_mon + 1);
     case 0x09: return encode(tm_info.tm_year % 100);
+    case 0x32: return encode((tm_info.tm_year + 1900) / 100);*/
+    case 0x00: return 0x41;
+    case 0x02: return 0x01;
+    case 0x04: return 0x00;
+    case 0x06: return 0x05;
+    case 0x07: return 0x03;
+    case 0x08: return 0x04;
+    case 0x09: return 0x26;
     case 0x32: return encode((tm_info.tm_year + 1900) / 100);
+    case 0x37: return 0x20;
     }
     return 0;
 }

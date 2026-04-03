@@ -104,7 +104,7 @@
     <ClInclude Include="timer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Keyboard.h">
+    <ClInclude Include="i8402.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vga.h">

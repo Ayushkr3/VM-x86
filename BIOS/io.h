@@ -9,7 +9,7 @@
 #include "kd.h"
 #include "fw_cfg.h"
 #include "timer.h"
-#include "Keyboard.h"
+#include "i8402.h"
 extern FWCfg fw_cfg;
 extern IO ports;
 typedef uint32_t (*GetEflagsFWD)(void);
@@ -23,10 +23,10 @@ struct MSR {
 struct UD {
 	PCISystemBus* sb;
 	PICState* pic;
+	PS2Keyboard* kbd;
 	void* whpxCtx;
 };
 extern UD ud;
-extern PS2Keyboard* kbd;
 
 uint32_t hook_in(uint16_t port, int size, void* user_data);
 void hook_out(uint16_t port, int size, uint32_t value, void* user_data);
