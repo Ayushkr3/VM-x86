@@ -1,9 +1,11 @@
 #pragma once
 #include "CPU.h"
 #include "vga.h"
+#include <d3d12.h>
+#include <dxgi1_2.h>
 #include "SDL3/SDL.h"
 #include "SDL3/SDL_opengl.h"
-
+#include <wrl.h>
 
 
 class DisplayAdapter:public ScreenAdapter {
@@ -13,6 +15,17 @@ class DisplayAdapter:public ScreenAdapter {
     SDL_Texture* texture;
     UpdateDispatchLoop DisplayUpdate;
     CRITICAL_SECTION cs;
+
+    Microsoft::WRL::ComPtr<ID3D12Device> device;
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> cq;
+    Microsoft::WRL::ComPtr<IDXGISwapChain1> swapchain;
+    Microsoft::WRL::ComPtr<IDXGIFactory2> factory;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtvHeap;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srvHeap;
+    Microsoft::WRL::ComPtr<ID3D12Resource> renderTargets[2];
+    D3D12_CPU_DESCRIPTOR_HANDLE handle;
+    Microsoft::WRL::ComPtr<ID3D12Resource> frameBuffer;
+
 public:
     SDL_Window* window;
     VGAController* vgaC = nullptr;

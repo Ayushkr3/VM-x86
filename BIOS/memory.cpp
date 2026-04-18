@@ -1,4 +1,4 @@
-#include "memory.h"
+﻿#include "memory.h"
 char* RAM = nullptr;
 char* SVGA = nullptr;
 char* VGA_ROM = nullptr;

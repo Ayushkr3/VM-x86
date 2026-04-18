@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 
 //All the helper garbage goes here

@@ -1,8 +1,6 @@
 ﻿#pragma once
 #include <iostream>
 #include "io.h"
-
-
 uint8_t CMOS::cmos_data[128];
 uint8_t CMOS::cmos_index = 0;
 std::unordered_map<uint64_t, uint64_t> MSR::msr_values;
@@ -39,8 +37,6 @@ void init_cmos() {
 void InitIDE(PCISystemBus* sb, std::string isoPath) {
     IDEDeviceConfig config[2][2] = {};
     //TODO: Delete this later
-    std::fstream* iso = new std::fstream;
-    iso->open(isoPath, std::ios::in | std::ios::binary);
     std::fstream* hd = new std::fstream;
     hd->open("D:\\windows nt\\disk0.diskX", std::ios::in | std::ios::out | std::ios::binary);
     config[0][0].buffer = hd;
@@ -57,12 +53,15 @@ void InitIDE(PCISystemBus* sb, std::string isoPath) {
     config[1][0].is_cdrom = false;
     config[1][0].buffer_size = 0;
 
-    //config[1][0].buffer = iso;
-    //config[1][0].is_cdrom = true;
-    //iso->seekg(0, std::ios::end);
-    //config[1][0].buffer_size = iso->tellg();
-    iso->seekg(0, std::ios::beg);
-
+    if (isoPath != "") {
+        std::fstream* iso = new std::fstream;
+        iso->open(isoPath, std::ios::in | std::ios::binary);
+        config[1][0].buffer = iso;
+        config[1][0].is_cdrom = true;
+        iso->seekg(0, std::ios::end);
+        config[1][0].buffer_size = iso->tellg();
+        iso->seekg(0, std::ios::beg);
+    }
     sb->ID = new IDEController(config);
     sb->AttachDevice((PCIDevice*)(sb->ID));
 }

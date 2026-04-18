@@ -2,6 +2,8 @@
 #include "Global.h"
 #include "Display.h"
 #include <iomanip>
+#pragma comment(lib,"d3d12.lib")
+#pragma comment(lib,"dxgi.lib")
 #define DISPLAY_W 720
 #define DISPLAY_H 400
 #define CURSOR_H 16
@@ -44,13 +46,79 @@ void DisplayAdapter::clear_screen() {
 }
 DisplayAdapter::DisplayAdapter() {
     SDL_Init(SDL_INIT_VIDEO);
-    window = SDL_CreateWindow("Video Output", 720, 400, SDL_WINDOW_OPENGL);
+    window = SDL_CreateWindow("Video Output", 720, 400, SDL_WINDOW_RESIZABLE);
     glCtx = SDL_GL_CreateContext(window);
     renderer = SDL_CreateRenderer(window, NULL);
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, DISPLAY_W, DISPLAY_H);
     DisplayUpdate = TextUpdate;
     framebuffer.resize(1024 * 768);
     InitializeCriticalSection(&cs);
+    SDL_PropertiesID props = SDL_GetWindowProperties(window);
+    HWND hwnd = (HWND)SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+
+
+
+    //ok(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device.GetAddressOf())));
+    //D3D12_FEATURE_DATA_ARCHITECTURE arch = {};
+    //D3D12_COMMAND_QUEUE_DESC qdesc = {};
+    //qdesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    //ok(device->CreateCommandQueue(&qdesc,IID_PPV_ARGS(cq.GetAddressOf())));
+    //device->CheckFeatureSupport(D3D12_FEATURE_ARCHITECTURE, &arch, sizeof(arch));
+
+    //DXGI_SWAP_CHAIN_DESC1 desc = {};
+    //desc.BufferCount = 2;
+    //desc.Width = 1024;
+    //desc.Height = 768;
+    //desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    //desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    //desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    //desc.SampleDesc.Count = 1;
+    //ok(CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf())));
+    ////ok(factory->CreateSwapChainForHwnd(cq.Get(), hwnd,&desc,nullptr,nullptr,swapchain.GetAddressOf()));
+
+    //D3D12_DESCRIPTOR_HEAP_DESC rtvDesc = {};
+    //rtvDesc.NumDescriptors = 2;
+    //rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+
+    //device->CreateDescriptorHeap(&rtvDesc,IID_PPV_ARGS(rtvHeap.GetAddressOf()));
+    //D3D12_DESCRIPTOR_HEAP_DESC srvDesc = {};
+    //srvDesc.NumDescriptors = 1;
+    //srvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    //srvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+    //device->CreateDescriptorHeap(&srvDesc, IID_PPV_ARGS(srvHeap.GetAddressOf()));
+
+    //for (int i = 0; i < 2; i++) {
+    //    ok(swapchain->GetBuffer(i, IID_PPV_ARGS(renderTargets[i].GetAddressOf())));
+    //    device->CreateRenderTargetView(renderTargets[i].Get(), nullptr, handle);
+    //}
+    //D3D12_HEAP_PROPERTIES heap = {};
+    //heap.Type = D3D12_HEAP_TYPE_CUSTOM;
+    //heap.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+    //heap.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+
+    //D3D12_RESOURCE_DESC rdesc = {};
+    //rdesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    //rdesc.Width = gfx_width * gfx_height * 4;
+    //rdesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+    //ok(device->CreateCommittedResource(
+    //    &heap,
+    //    D3D12_HEAP_FLAG_NONE,
+    //    &rdesc,
+    //    D3D12_RESOURCE_STATE_GENERIC_READ,
+    //    nullptr,
+    //    IID_PPV_ARGS(frameBuffer.GetAddressOf())
+    //));
+    //frameBuffer->Map(0, nullptr, (void**)&SVGA);
+
+    //D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
+    //srv.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    //srv.Format = DXGI_FORMAT_UNKNOWN;
+    //srv.Buffer.NumElements = gfx_width * gfx_height;
+    //srv.Buffer.StructureByteStride = 4;
+
+    //device->CreateShaderResourceView(frameBuffer.Get(), &srv, handle);
 }
 DisplayAdapter::~DisplayAdapter() {
     SDL_DestroyTexture(texture);
@@ -118,15 +186,17 @@ void DisplayAdapter::set_size_graphical(int w, int h)
     if (!is_graphical)
         return;
     EnterCriticalSection(&cs);
+    if(w!=-1)
     gfx_width = w;
+    if(h!=-1)
     gfx_height = h;
 
-    SDL_SetWindowSize(window, w, h);
+    SDL_SetWindowSize(window, gfx_width, gfx_height);
     SDL_DestroyTexture(texture);
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XRGB8888,
-        SDL_TEXTUREACCESS_STREAMING, w, h);
+        SDL_TEXTUREACCESS_STREAMING, gfx_width, gfx_height);
     
-    framebuffer.assign((size_t)w * h, 0);
+    framebuffer.assign((size_t)gfx_width* gfx_height, 0);
 
     LeaveCriticalSection(&cs);
 }

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "PIC.h"
 #include <functional>
 enum TIMER_MASK_TYPE {

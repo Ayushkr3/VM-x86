@@ -314,28 +314,6 @@ struct MemoryRegionOps {
         bool unaligned;
     } impl;
 };
-typedef struct GraphicHwOps {
-    int (*get_flags)(void* opaque); /* optional, default 0 */
-    void (*invalidate)(void* opaque);
-    void (*gfx_update)(void* opaque);
-    bool gfx_update_async; /* if true, calls graphic_hw_update_done() */
-    void (*gl_block)(void* opaque, bool block);
-} GraphicHwOps;
-typedef uint8_t(*vga_retrace_fn)(struct VGACommonState* s);
-typedef void (*vga_update_retrace_info_fn)(struct VGACommonState* s);
-struct vga_precise_retrace {
-    int64_t ticks_per_char;
-    int64_t total_chars;
-    int htotal;
-    int hstart;
-    int hend;
-    int vstart;
-    int vend;
-    int freq;
-};
-union vga_retrace {
-    struct vga_precise_retrace precise;
-};
 struct MemoryRegion {
     uint64_t physical_start;
     uint64_t size;
@@ -392,13 +370,6 @@ struct VGACommonState {
     uint32_t vbe_line_offset;
     uint32_t vbe_bank_mask;
     bool svga_enabled;
-    uint32_t svga_version;
-    uint32_t svga_width;
-    uint32_t svga_height;
-    uint32_t svga_bpp;
-    uint32_t svga_offset_x;
-    uint32_t svga_offset_y;
-    uint32_t svga_offset;
     uint32_t dispi_enable_value;
     /* display refresh support */
     uint8_t* panning_buf;
@@ -412,31 +383,17 @@ struct VGACommonState {
     uint32_t last_width, last_height; /* in chars or pixels */
     uint32_t last_scr_width, last_scr_height; /* in pixels */
     uint32_t last_depth; /* in bits */
-    bool last_byteswap;
-    bool force_shadow;
-    uint8_t cursor_start, cursor_end;
-    bool cursor_visible_phase;
-    int64_t cursor_blink_time;
-    uint32_t cursor_offset;
-    const GraphicHwOps* hw_ops;
     bool full_update_text;
     bool full_update_gfx;
-    bool big_endian_fb;
-    bool default_endian_fb;
     bool global_vmstate;
     /* hardware mouse cursor support */
     uint32_t invalidated_y_table[VGA_MAX_HEIGHT / 32];
-    uint32_t hw_cursor_x;
-    uint32_t hw_cursor_y;
     void (*cursor_invalidate)(struct VGACommonState* s);
     void (*cursor_draw_line)(struct VGACommonState* s, uint8_t* d, int y);
     /* tell for each page if it has been updated since the last time */
     uint32_t last_palette[256];
     uint32_t last_ch_attr[CH_ATTR_SIZE]; /* XXX: make it dynamic */
     /* retrace */
-    vga_retrace_fn retrace;
-    vga_update_retrace_info_fn update_retrace_info;
-    union vga_retrace retrace_info;
     uint8_t is_vbe_vmstate;
     uint8_t plane0[65536];
     uint8_t plane1[65536];
@@ -460,8 +417,6 @@ bool vga_common_init(VGACommonState* s);
 void vga_init(VGACommonState* s);
 void vga_common_reset(VGACommonState* s);
 
-void vga_dirty_log_start(VGACommonState* s);
-void vga_dirty_log_stop(VGACommonState* s);
 
 uint32_t vga_ioport_read(void* opaque, uint32_t addr);
 void vga_ioport_write(void* opaque, uint32_t addr, uint32_t val);
@@ -477,12 +432,6 @@ void vbe_ioport_write_data(void* opaque, uint32_t addr, uint32_t val);
 void vga_update_display(void* opaque);
 extern const uint8_t sr_mask[8];
 extern const uint8_t gr_mask[16];
-
-#define VGABIOS_FILENAME "vgabios.bin"
-#define VGABIOS_CIRRUS_FILENAME "vgabios-cirrus.bin"
-
-
-void memory_region_set_dirty(void* mr, hwaddr addr, hwaddr size);
 
 class ScreenAdapter {
 public:

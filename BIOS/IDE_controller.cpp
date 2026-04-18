@@ -1,4 +1,4 @@
-#include "IDE_controller.h"
+ï»¿#include "IDE_controller.h"
 #include <iostream>
 #include <cmath>
 #include <algorithm>
@@ -448,12 +448,12 @@ void IDEInterface::readBuffer(uint32_t start, uint32_t length,
     in_progress_io_ids.insert(id);
 
     if (!buffer || start + length > buffer_size) {
-        // clean up and bail — mirrors JS buffer.get never calling back
+        // clean up and bail â€” mirrors JS buffer.get never calling back
         in_progress_io_ids.erase(id);
         return;
     }
 
-    // synchronous "async" read — mirrors what happens inside buffer.get's callback
+    // synchronous "async" read â€” mirrors what happens inside buffer.get's callback
     {
         // Check if cancelled (mirrors: if(this.cancelled_io_ids.delete(id)) return)
         if (cancelled_io_ids.erase(id)) {
@@ -463,7 +463,7 @@ void IDEInterface::readBuffer(uint32_t start, uint32_t length,
             return;
         }
 
-        // Not cancelled — remove from in_progress and invoke callback
+        // Not cancelled â€” remove from in_progress and invoke callback
         bool removed = in_progress_io_ids.erase(id);
 
         buffer->seekg(start, std::ios::beg);
@@ -835,7 +835,7 @@ void IDEInterface::atapiHandle() {
         int length = cmd_packet[4];
         status_reg = ATA_SR_DRDY | ATA_SR_DSC | ATA_SR_DRQ;
         // Allocate fresh buffer (preserves 64KB backing store via resize-only growth)
-        // then fill — never shrink the vector with an assignment literal
+        // then fill â€” never shrink the vector with an assignment literal
         static const uint8_t inquiry_data[36] = {
             // 0: Device-type, Removable, ANSI-Version, Response Format
             0x05, 0x80, 0x01, 0x31,
@@ -971,7 +971,7 @@ void IDEInterface::atapiHandle() {
         }
         else
         {
-            // Unsupported format — return CHECK CONDITION
+            // Unsupported format â€” return CHECK CONDITION
             atapiCheckConditionResponse(ATAPI_SK_ILLEGAL_REQUEST,
                 ATAPI_ASC_INV_FIELD_IN_CMD_PACKET);
             break;
@@ -1119,14 +1119,14 @@ void IDEInterface::createIdentifyPacket() {
     const uint16_t feat_83 = is_atapi ? 1 << 14 | 1 << 12 : 1 << 14 | 1 << 13 | 1 << 12 | 1 << 10;
     const uint16_t feat_84 = is_atapi ? 1 << 14 : 1 << 14;
     // -----------------------------
-// Word 0 – General configuration
+// Word 0 â€“ General configuration
 // -----------------------------
     uint16_t general_cfg = is_atapi ? 0x8540 : 0x0040;
     data[0] = general_cfg & 0xFF;
     data[1] = (general_cfg >> 8) & 0xFF;
 
     // -----------------------------
-    // Word 1 – Cylinder count
+    // Word 1 â€“ Cylinder count
     // -----------------------------
     data[2] = cyl_count & 0xFF;
     data[3] = (cyl_count >> 8) & 0xFF;
@@ -1134,64 +1134,64 @@ void IDEInterface::createIdentifyPacket() {
     // Word 2 reserved already zero
 
     // -----------------------------
-    // Word 3 – Head count
+    // Word 3 â€“ Head count
     // -----------------------------
     data[6] = head_count & 0xFF;
     data[7] = (head_count >> 8) & 0xFF;
 
     // -----------------------------
-    // Word 4 – Unformatted bytes/track
+    // Word 4 â€“ Unformatted bytes/track
     // -----------------------------
     uint16_t unformatted_track = sectors_per_track / 512;
     data[8] = unformatted_track & 0xFF;
     data[9] = (unformatted_track >> 8) & 0xFF;
 
     // -----------------------------
-    // Word 5 – Unformatted bytes/sector
+    // Word 5 â€“ Unformatted bytes/sector
     // -----------------------------
     data[10] = 0;
     data[11] = 512 >> 8;
 
     // -----------------------------
-    // Word 6 – Sectors per track
+    // Word 6 â€“ Sectors per track
     // -----------------------------
     data[12] = sectors_per_track & 0xFF;
     data[13] = (sectors_per_track >> 8) & 0xFF;
 
-    // Words 7–9 vendor unique already zero
+    // Words 7â€“9 vendor unique already zero
 
     // -----------------------------
-    // Word 20 – Buffer type
+    // Word 20 â€“ Buffer type
     // -----------------------------
     data[40] = 3;
     data[41] = 0;
 
     // -----------------------------
-    // Word 21 – Buffer size
+    // Word 21 â€“ Buffer size
     // -----------------------------
     data[42] = 0;
     data[43] = 2;
 
     // -----------------------------
-    // Word 22 – ECC bytes
+    // Word 22 â€“ ECC bytes
     // -----------------------------
     data[44] = 4;
     data[45] = 0;
 
     // -----------------------------
-    // Word 47 – Max sectors per interrupt
+    // Word 47 â€“ Max sectors per interrupt
     // -----------------------------
     data[94] = 0x80;
     data[95] = 0;
 
     // -----------------------------
-    // Word 48 – Doubleword I/O
+    // Word 48 â€“ Doubleword I/O
     // -----------------------------
     data[96] = 1;
     data[97] = 0;
 
     // -----------------------------
-    // Word 49 – Capabilities
+    // Word 49 â€“ Capabilities
     // -----------------------------
     data[98] = 0b00000010;
     data[99] = 0;
@@ -1199,43 +1199,43 @@ void IDEInterface::createIdentifyPacket() {
     // Word 50 reserved
 
     // -----------------------------
-    // Word 51 – PIO timing
+    // Word 51 â€“ PIO timing
     // -----------------------------
     data[102] = 0;
     data[103] = 2;
 
     // -----------------------------
-    // Word 52 – DMA timing
+    // Word 52 â€“ DMA timing
     // -----------------------------
     data[104] = 0;
     data[105] = 0;
 
     // -----------------------------
-    // Word 53 – Fields valid
+    // Word 53 â€“ Fields valid
     // -----------------------------
     data[106] = 0x03;
     data[107] = 0;
 
     // -----------------------------
-    // Word 54 – Current cylinders
+    // Word 54 â€“ Current cylinders
     // -----------------------------
     data[108] = cyl_count & 0xFF;
     data[109] = (cyl_count >> 8) & 0xFF;
 
     // -----------------------------
-    // Word 55 – Current heads
+    // Word 55 â€“ Current heads
     // -----------------------------
     data[110] = head_count & 0xFF;
     data[111] = (head_count >> 8) & 0xFF;
 
     // -----------------------------
-    // Word 56 – Current sectors/track
+    // Word 56 â€“ Current sectors/track
     // -----------------------------
     data[112] = sectors_per_track;
     data[113] = 0;
 
     // -----------------------------
-    // Word 57–58 – Current capacity
+    // Word 57â€“58 â€“ Current capacity
     // -----------------------------
     data[114] = sector_count & 0xFF;
     data[115] = (sector_count >> 8) & 0xFF;
@@ -1243,7 +1243,7 @@ void IDEInterface::createIdentifyPacket() {
     data[117] = (sector_count >> 24) & 0xFF;
 
     // -----------------------------
-    // Word 60–61 – LBA sector count
+    // Word 60â€“61 â€“ LBA sector count
     // -----------------------------
     data[120] = sector_count & 0xFF;
     data[121] = (sector_count >> 8) & 0xFF;
@@ -1251,13 +1251,13 @@ void IDEInterface::createIdentifyPacket() {
     data[123] = (sector_count >> 24) & 0xFF;
 
     // -----------------------------
-    // Word 63 – Multiword DMA
+    // Word 63 â€“ Multiword DMA
     // -----------------------------
     //data[126] = multiword_dma_mode & 0xFF;
     //data[127] = (multiword_dma_mode >> 8) & 0xFF;
 
     // -----------------------------
-    // Word 65–68 – cycle times
+    // Word 65â€“68 â€“ cycle times
     // -----------------------------
     data[130] = 0;
     data[132] = 0;
@@ -1265,13 +1265,13 @@ void IDEInterface::createIdentifyPacket() {
     data[136] = 0;
 
     // -----------------------------
-    // Word 80 – ATA major version
+    // Word 80 â€“ ATA major version
     // -----------------------------
     data[160] = major_version & 0xFF;
     data[161] = (major_version >> 8) & 0xFF;
 
     // -----------------------------
-    // Word 82 – Features supported
+    // Word 82 â€“ Features supported
     // -----------------------------
     data[164] = feat_82 & 0xFF;
     data[165] = (feat_82 >> 8) & 0xFF;
@@ -1299,13 +1299,13 @@ void IDEInterface::createIdentifyPacket() {
     data[176] = 0x00;
     data[177] = 0x00;
     // -----------------------------
-    // Word 93 – Hardware reset
+    // Word 93 â€“ Hardware reset
     // -----------------------------
     data[186] = 1;
     data[187] = 0x60;
 
     // -----------------------------
-    // Word 100–101 – 48bit LBA
+    // Word 100â€“101 â€“ 48bit LBA
     // -----------------------------
     data[200] = sector_count & 0xFF;
     data[201] = (sector_count >> 8) & 0xFF;

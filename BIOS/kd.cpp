@@ -1,4 +1,4 @@
-#include "kd.h"
+﻿#include "kd.h"
 HANDLE  KernelDebugger::pipe_in = INVALID_HANDLE_VALUE;
 HANDLE  KernelDebugger::pipe_out = INVALID_HANDLE_VALUE;
 uint8_t KernelDebugger::rx_buf = 0x00;

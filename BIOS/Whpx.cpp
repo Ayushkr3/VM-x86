@@ -1,4 +1,4 @@
-#include "Whpx.h"
+﻿#include "Whpx.h"
 short whCPUctx::VPcount = 0;
 WHV_PARTITION_HANDLE whCPUctx::Partition;
 void* WHPX::currentCtx = nullptr;

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "Global.h"
 #include "APIC.h"
 static const uint64_t RAM_BASE = 0x00000000;

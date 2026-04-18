@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "Global.h"
 #include "memory.h"
 #include "CPU.h"
@@ -19,7 +19,7 @@ struct whCPUctx {
 		names[0] = WHvX64RegisterCr0;
 		values[0].Reg64 = 0x00;  // PE=0, ET=1
 
-		// CS � real mode segment, base 0xFFFF0, limit 0xFFFF
+		// CS — real mode segment, base 0xFFFF0, limit 0xFFFF
 		names[1] = WHvX64RegisterCs;
 		values[1].Segment.Base = 0xF0000;
 		values[1].Segment.Limit = 0xFFFF;

@@ -1,4 +1,4 @@
-#include "Global.h"
+﻿#include "Global.h"
 #include <chrono>
 std::atomic<bool> running = true;
 IRQ irq;

@@ -187,7 +187,7 @@ public:
     void set_sample_rate(uint8_t rate) {
         sample_rate = rate;
         if (!sample_rate) {
-            printf("[MOUSE] invalid sample rate, reset to 100\n");
+           
             sample_rate = 100;
         }
 
@@ -223,8 +223,6 @@ public:
             mouse_detect_state = -1;
             break;
         }
-
-        printf("[MOUSE] sample rate: %u, mouse_id: 0x%02X\n", rate, mouse_id);
     }
 
     
@@ -318,11 +316,9 @@ public:
             expecting_res = false;
             if (cmd > 3) {
                 resolution = 4;
-                printf("[MOUSE] invalid resolution, resetting to 4\n");
             }
             else {
                 resolution = 1 << cmd;
-                printf("[MOUSE] resolution: %u\n", resolution);
             }
             push(0xFA);
             return true;
@@ -335,13 +331,11 @@ public:
         case MOUSE_CMD_SET_SCALE11:         
             push(0xFA);
             scaling2 = false;
-            printf("[MOUSE] Scaling 1:1\n");
             break;
 
         case MOUSE_CMD_SET_SCALE21:         
             push(0xFA);
             scaling2 = true;
-            printf("[MOUSE] Scaling 2:1\n");
             break;
 
         case MOUSE_CMD_SET_RES:             
@@ -356,13 +350,11 @@ public:
         }
 
         case MOUSE_CMD_READ_DATA:           
-            printf("[MOUSE] request single packet\n");
             push(0xFA);
             send_packet(0, 0);
             break;
 
         case MOUSE_CMD_GET_ID:              
-            printf("[MOUSE] required id: 0x%02X\n", mouse_id);
             push(0xFA);
             push(mouse_id);
             mouse_clicks = delta_x = delta_y = 0;
@@ -378,13 +370,11 @@ public:
             enable_stream = true;
             use_mouse = true;
             mouse_clicks = delta_x = delta_y = 0;
-            printf("[MOUSE] streaming enabled\n");
             break;
 
         case MOUSE_CMD_DISABLE:             
             push(0xFA);
             enable_stream = false;
-            printf("[MOUSE] streaming disabled\n");
             break;
 
         case MOUSE_CMD_SET_DEFAULT:         
@@ -397,7 +387,6 @@ public:
 
         case MOUSE_CMD_RESET:               
             push(0xFA);
-            printf("[MOUSE] Mouse reset\n");
             use_mouse = true;
             enable_stream = false;
             sample_rate = 100;
@@ -419,7 +408,6 @@ public:
             break;
 
         default:
-            printf("[MOUSE] Unimplemented mouse command: 0x%02X\n", cmd);
             push(0xFA);
             break;
         }
@@ -662,17 +650,14 @@ public:
             break;
 
         case KBD_CMD_CPU_RESET:         
-            printf("[PS2] CPU reboot via PS2\n");
             if (do_reboot) do_reboot();
             break;
 
         default:
-            printf("[PS2] port 64: Unimplemented command: 0x%02X\n", cmd);
             break;
         }
     }
     void write_data(uint8_t val) {
-        printf("[PS2] port 60 write: 0x%02X\n", val);
 
         status_reg &= ~KBD_STATUS_IBF;
 
@@ -682,7 +667,6 @@ public:
             ccb = val;
             kbd_disabled = (ccb & KBD_CCB_DISABLE_KBD) != 0;
             aux_disabled = (ccb & KBD_CCB_DISABLE_AUX) != 0;
-            printf("[PS2] Keyboard command register = 0x%02X\n", ccb);
             return;
         }
 
@@ -716,8 +700,6 @@ public:
             kbd_leds = val & 0x07;
             push_output(KBD_RESP_ACK);
             trigger_irq();
-            printf("[PS2] LEDs: scroll=%d num=%d caps=%d\n",
-                kbd_leds & 1, (kbd_leds >> 1) & 1, (kbd_leds >> 2) & 1);
             return;
         }
 
@@ -746,7 +728,6 @@ public:
         
         if (next_is_mouse) {
             next_is_mouse = false;
-            printf("[PS2] Port 60 data register write (mouse): 0x%02X\n", val);
 
             if (!mouse.have_mouse) return;
 
@@ -768,7 +749,6 @@ public:
         }
 
         
-        printf("[PS2] Port 60 data register write (kbd): 0x%02X\n", val);
         handle_kbd_command(val);
     }
 
@@ -800,12 +780,10 @@ public:
             break;
 
         case KBD_DEV_CMD_ENABLE:            
-            printf("[PS2] kbd enable scanning\n");
             kbd_disabled = false;
             break;
 
         case KBD_DEV_CMD_DISABLE:           
-            printf("[PS2] kbd disable scanning\n");
             kbd_disabled = true;
             break;
 
@@ -831,7 +809,6 @@ public:
             break;
 
         default:
-            printf("[PS2] Unimplemented keyboard command: 0x%02X\n", val);
             break;
         }
 

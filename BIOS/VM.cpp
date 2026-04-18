@@ -112,7 +112,7 @@ void EmulationLoop() {
 int main(int argc, char* argv[]) {
 	const char* bios_path = "D:/windows nt/bios_nd.bin";
 	const char* vgabios_path = "D:/windows nt/vgabios.bin";
-	std::string isopath = "D:/windows nt/windows xp32_d.iso";
+	std::string isopath = "";
 	auto bios = load_bios(bios_path);
 	auto vgabios = load_bios(vgabios_path);
 	fw_cfg.init(RAM_SIZE);

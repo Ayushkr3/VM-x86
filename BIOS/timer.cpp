@@ -1,4 +1,4 @@
-//This file will contain all VM timer related feature
+﻿//This file will contain all VM timer related feature
 //It will contain
 //IOAPIC redirection
 //PIC redirections
