@@ -54,3 +54,9 @@ The memory interception and callback system is suitable for Windows XP–era ana
   - SDL3 (optional, for display/input)
   - Standard C/C++ toolchain
 
+
+## Preview
+
+https://github.com/user-attachments/assets/65713400-abd9-4596-9946-7cbb59d899d1
+
+
