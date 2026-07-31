@@ -1,44 +1,55 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
 name: MSBuild
 
 on:
   push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+    branches:
+      - master
 
 env:
-  # Path to the solution file relative to the root of the project.
-  SOLUTION_FILE_PATH: .
-
-  # Configuration type to build.
-  # You can convert this to a build matrix if you need coverage of multiple configuration types.
-  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+  SOLUTION_FILE_PATH: BIOS.sln
   BUILD_CONFIGURATION: Release
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: windows-2022
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v1.0.2
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
 
-    - name: Restore NuGet packages
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: nuget restore ${{env.SOLUTION_FILE_PATH}}
+      - name: Restore NuGet packages
+        run: nuget restore ${{ env.SOLUTION_FILE_PATH }}
 
-    - name: Build
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      # Add additional options to the MSBuild command line here (like platform or verbosity level).
-      # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
-      run: msbuild /m /p:Platform=x64 /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}}
+      - name: Build
+        run: msbuild ${{ env.SOLUTION_FILE_PATH }} /m /p:Configuration=${{ env.BUILD_CONFIGURATION }} /p:Platform=x64
+
+      - name: Copy SDL3.dll
+        run: copy lib\bins\SDL3.dll x64\Release\
+
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path x64\Release\* -DestinationPath BIOS-Build-${{ github.run_number }}.zip
+
+      - name: Create Tag
+        shell: pwsh
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag build-${{ github.run_number }}
+          git push origin build-${{ github.run_number }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
+          generate_release_notes: true
+          files: BIOS-Build-${{ github.run_number }}.zip
