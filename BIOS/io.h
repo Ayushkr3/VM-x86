@@ -34,5 +34,5 @@ void hook_wrmsr(uint32_t index,uint32_t rax,uint32_t rdx);
 void hook_rdmsr(uint32_t index, uint32_t* rax,uint32_t* rdx);
 void hook_mmio_in(uint64_t PA, uint8_t* Data, uint16_t size,void* user_data);
 void hook_mmio_out(uint64_t PA, uint8_t* Data, uint16_t size, void* user_data);
-void InitIO(PCISystemBus* sb, RaiseIRQ_f rfwd, std::string isoPath);
+void InitIO(PCISystemBus* sb, RaiseIRQ_f rfwd, std::string isoPath, std::string hdPath);
 void init_cmos();

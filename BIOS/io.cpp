@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <iostream>
+#include <filesystem>
 #include "io.h"
 uint8_t CMOS::cmos_data[128];
 uint8_t CMOS::cmos_index = 0;
@@ -34,16 +35,48 @@ void init_cmos() {
     CMOS::cmos_data[0x38] = 0x00;  // No special boot flags
 }
 
-void InitIDE(PCISystemBus* sb, std::string isoPath) {
+void InitIDE(PCISystemBus* sb, std::string isoPath, std::string hdPath) {
     IDEDeviceConfig config[2][2] = {};
-    //TODO: Delete this later
-    std::fstream* hd = new std::fstream;
-    hd->open("D:\\windows nt\\disk0.diskX", std::ios::in | std::ios::out | std::ios::binary);
-    config[0][0].buffer = hd;
-    config[0][0].is_cdrom = false;
-    hd->seekg(0, std::ios::end);
-    config[0][0].buffer_size = hd->tellg();
-    hd->seekg(0, std::ios::beg);
+    std::string hd_path = hdPath;
+    if (hd_path.empty()) {
+        hd_path = "disk0.diskX";
+    }
+
+    std::fstream* hd = nullptr;
+    try {
+        if (std::filesystem::exists(hd_path)) {
+            hd = new std::fstream;
+            hd->open(hd_path, std::ios::in | std::ios::out | std::ios::binary);
+            if (!hd->is_open()) {
+                std::cerr << "Warning: Failed to open HD file in read/write mode: " << hd_path << "\n";
+                // try read-only
+                hd->open(hd_path, std::ios::in | std::ios::binary);
+                if (!hd->is_open()) {
+                    delete hd;
+                    hd = nullptr;
+                }
+            }
+        }
+        else {
+            std::cerr << "Warning: HD file does not exist: " << hd_path << " — IDE0 will be empty\n";
+        }
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Exception checking/ opening HD path: " << e.what() << "\n";
+    }
+
+    if (hd) {
+        config[0][0].buffer = hd;
+        config[0][0].is_cdrom = false;
+        hd->seekg(0, std::ios::end);
+        config[0][0].buffer_size = hd->tellg();
+        hd->seekg(0, std::ios::beg);
+    }
+    else {
+        config[0][0].buffer = nullptr;
+        config[0][0].is_cdrom = false;
+        config[0][0].buffer_size = 0;
+    }
 
     config[0][1].buffer = nullptr;
     config[0][1].is_cdrom = false;
@@ -53,22 +86,39 @@ void InitIDE(PCISystemBus* sb, std::string isoPath) {
     config[1][0].is_cdrom = false;
     config[1][0].buffer_size = 0;
 
-    if (isoPath != "") {
-        std::fstream* iso = new std::fstream;
-        iso->open(isoPath, std::ios::in | std::ios::binary);
-        config[1][0].buffer = iso;
-        config[1][0].is_cdrom = true;
-        iso->seekg(0, std::ios::end);
-        config[1][0].buffer_size = iso->tellg();
-        iso->seekg(0, std::ios::beg);
+    if (!isoPath.empty()) {
+        try {
+            if (std::filesystem::exists(isoPath)) {
+                std::fstream* iso = new std::fstream;
+                iso->open(isoPath, std::ios::in | std::ios::binary);
+                if (iso->is_open()) {
+                    config[1][0].buffer = iso;
+                    config[1][0].is_cdrom = true;
+                    iso->seekg(0, std::ios::end);
+                    config[1][0].buffer_size = iso->tellg();
+                    iso->seekg(0, std::ios::beg);
+                }
+                else {
+                    std::cerr << "Warning: Could not open ISO file: " << isoPath << "\n";
+                    delete iso;
+                }
+            }
+            else {
+                std::cerr << "Warning: ISO file does not exist: " << isoPath << "\n";
+            }
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Exception checking/opening ISO path: " << e.what() << "\n";
+        }
     }
+
     sb->ID = new IDEController(config);
     sb->AttachDevice((PCIDevice*)(sb->ID));
 }
-void InitIO(PCISystemBus* sb, RaiseIRQ_f rfwd, std::string isoPath) {
+void InitIO(PCISystemBus* sb, RaiseIRQ_f rfwd, std::string isoPath, std::string hdPath) {
     PICState::Init(rfwd);
     Timers::Init();
-    InitIDE(sb, isoPath);
+    InitIDE(sb, isoPath, hdPath);
     init_cmos();
     KernelDebugger::com1_init_pipe([]() {
         pic.RaiseIRQ(0x4);
